@@ -16,6 +16,8 @@ class YouTubeLinkTest {
             "https://www.youtube.com/shorts/dQw4w9WgXcQ",
             "https://music.youtube.com/watch?v=dQw4w9WgXcQ&feature=share",
             "Check this out https://youtu.be/dQw4w9WgXcQ shared via YouTube",
+            "Listen: https://youtu.be/dQw4w9WgXcQ.",
+            "(https://www.youtube.com/watch?v=dQw4w9WgXcQ)",
         ).forEach { assertEquals(it, expected, YouTubeLink.parse(it)) }
     }
 

@@ -3,6 +3,7 @@ package com.ezymusy.app.feature.player
 import android.app.Application
 import android.content.ComponentName
 import android.util.Log
+import androidx.annotation.OptIn
 import androidx.annotation.StringRes
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
@@ -11,6 +12,8 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.common.util.Util
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import com.ezymusy.app.R
@@ -18,8 +21,8 @@ import com.ezymusy.app.core.playback.PlaybackService
 import com.ezymusy.app.core.playback.toMediaItem
 import com.ezymusy.app.core.youtube.YouTube
 import com.ezymusy.app.core.youtube.YouTubeLink
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -38,7 +41,8 @@ sealed interface Playback {
     data class Ready(
         val title: String,
         val artist: String,
-        val isPlaying: Boolean,
+        /** True while playback is playing or about to (buffering): the button offers Pause. */
+        val showPause: Boolean,
         val positionMs: Long,
         val durationMs: Long,
     ) : Playback
@@ -64,25 +68,43 @@ class PlayerViewModel(
         SessionToken(app, ComponentName(app, PlaybackService::class.java)),
     ).buildAsync()
     private var connected: MediaController? = null
+
     private var lastVideoId: String? = null
+    private var loadToken = 0
+    private var loadJob: Job? = null
+    private var loading = false
+    private var extractionFailed = false
     private var ticker: Job? = null
 
     private val listener = object : Player.Listener {
-        override fun onEvents(player: Player, events: Player.Events) = publish(player)
+        override fun onEvents(player: Player, events: Player.Events) = publish()
 
         override fun onPlayerError(error: PlaybackException) {
-            _state.update { it.copy(playback = Playback.Failed) }
+            // The cached stream URL may be the cause (403, expired): never reuse it.
+            connected?.currentMediaItem?.mediaId?.let(youTube::invalidate)
         }
     }
 
     init {
         controllerFuture.addListener({
-            val c = controllerFuture.get()
-            c.addListener(listener)
-            connected = c
-            controller.complete(c)
-            publish(c)
+            if (controllerFuture.isCancelled) return@addListener
+            try {
+                val c = controllerFuture.get()
+                c.addListener(listener)
+                connected = c
+                controller.complete(c)
+            } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
+                Log.w(TAG, "Could not connect to PlaybackService", e)
+                controller.completeExceptionally(e)
+                extractionFailed = true
+            }
+            publish()
         }, ContextCompat.getMainExecutor(app))
+
+        // Resume position updates when the screen becomes visible again.
+        viewModelScope.launch {
+            _state.subscriptionCount.collect { if (it > 0) publish() }
+        }
     }
 
     fun onInputChange(text: String) = _state.update { it.copy(input = text, inputError = null) }
@@ -96,68 +118,83 @@ class PlayerViewModel(
     }
 
     fun retry() {
-        lastVideoId?.let(::play)
+        val videoId = lastVideoId ?: return
+        youTube.invalidate(videoId)
+        play(videoId)
     }
 
-    fun togglePlay() = viewModelScope.launch {
-        val c = controller.await()
-        if (c.isPlaying) c.pause() else c.play()
+    @OptIn(UnstableApi::class)
+    fun togglePlay() {
+        // Handles ended, idle-after-error and buffering, not just playing/paused.
+        connected?.let(Util::handlePlayPauseButtonAction)
     }
 
-    fun seekTo(positionMs: Long) = viewModelScope.launch { controller.await().seekTo(positionMs) }
+    fun seekTo(positionMs: Long) {
+        connected?.seekTo(positionMs)
+    }
 
     private fun play(videoId: String) {
         lastVideoId = videoId
-        _state.update { it.copy(playback = Playback.Loading) }
-        viewModelScope.launch {
+        loadJob?.cancel() // a newer link always wins over a slower, older extraction
+        val token = ++loadToken
+        loading = true
+        extractionFailed = false
+        publish()
+        loadJob = viewModelScope.launch {
             try {
                 val track = withContext(Dispatchers.IO) { youTube.track(videoId) }
                 controller.await().run {
                     setMediaItem(track.toMediaItem())
                     prepare()
                     play()
-                    _state.update { it.copy(playback = Playback.Idle) }
-                    publish(this)
                 }
             } catch (e: CancellationException) {
                 throw e
             } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
                 // Extraction failures come as many unrelated types (IO, parsing, ReCaptcha).
                 Log.w(TAG, "Could not resolve $videoId", e)
-                _state.update { it.copy(playback = Playback.Failed) }
-            }
-        }
-    }
-
-    private fun publish(player: Player) {
-        val meta = player.mediaMetadata
-        val current = _state.value.playback
-        // Loading and Failed are owned by play()/onPlayerError, not by player events.
-        if (player.mediaItemCount == 0 || current == Playback.Loading || current == Playback.Failed) return
-        _state.update {
-            it.copy(
-                playback = Playback.Ready(
-                    title = meta.title?.toString().orEmpty(),
-                    artist = meta.artist?.toString().orEmpty(),
-                    isPlaying = player.isPlaying,
-                    positionMs = player.currentPosition,
-                    durationMs = player.duration.coerceAtLeast(0),
-                ),
-            )
-        }
-        // Position only moves while playing; poll then, sleep otherwise.
-        if (player.isPlaying && ticker?.isActive != true) {
-            ticker = viewModelScope.launch {
-                while (isActive && player.isPlaying) {
-                    publish(player)
-                    delay(TICK_MS)
+                extractionFailed = true
+            } finally {
+                if (token == loadToken) {
+                    loading = false
+                    publish()
                 }
             }
         }
     }
 
+    @OptIn(UnstableApi::class)
+    private fun publish() {
+        val player = connected
+        val playback = when {
+            loading -> Playback.Loading
+            extractionFailed || player?.playerError != null -> Playback.Failed
+            player == null || player.mediaItemCount == 0 -> Playback.Idle
+            else -> Playback.Ready(
+                title = player.mediaMetadata.title?.toString().orEmpty(),
+                artist = player.mediaMetadata.artist?.toString().orEmpty(),
+                showPause = !Util.shouldShowPlayButton(player),
+                positionMs = player.currentPosition,
+                durationMs = player.duration.coerceAtLeast(0),
+            )
+        }
+        _state.update { it.copy(playback = playback) }
+
+        // Position only moves while playing and only matters while someone is watching.
+        val shouldTick = player?.isPlaying == true && isVisible()
+        if (shouldTick && ticker?.isActive != true) {
+            ticker = viewModelScope.launch {
+                while (isActive && connected?.isPlaying == true && isVisible()) {
+                    delay(TICK_MS)
+                    publish()
+                }
+            }
+        }
+    }
+
+    private fun isVisible() = _state.subscriptionCount.value > 0
+
     override fun onCleared() {
-        controller.cancel()
         connected?.removeListener(listener)
         MediaController.releaseFuture(controllerFuture)
     }

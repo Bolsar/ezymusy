@@ -1,5 +1,6 @@
 package com.ezymusy.app.feature.player
 
+import android.text.format.DateUtils
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -47,7 +48,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ezymusy.app.R
 import com.ezymusy.app.core.designsystem.Dimens
 import com.ezymusy.app.core.designsystem.EzymusyTheme
-import java.util.Locale
 import java.util.concurrent.TimeUnit
 
 @Composable
@@ -204,7 +204,7 @@ private fun NowPlaying(playback: Playback.Ready, onTogglePlay: () -> Unit, onSee
             TimeLabel(playback.durationMs)
         }
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-            val toggleLabel = stringResource(if (playback.isPlaying) R.string.pause else R.string.play)
+            val toggleLabel = stringResource(if (playback.showPause) R.string.pause else R.string.play)
             FilledIconButton(
                 onClick = onTogglePlay,
                 modifier = Modifier
@@ -213,7 +213,7 @@ private fun NowPlaying(playback: Playback.Ready, onTogglePlay: () -> Unit, onSee
                     .testTag("play_pause"),
             ) {
                 Icon(
-                    imageVector = if (playback.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                    imageVector = if (playback.showPause) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
                     contentDescription = null,
                 )
             }
@@ -223,16 +223,12 @@ private fun NowPlaying(playback: Playback.Ready, onTogglePlay: () -> Unit, onSee
 
 @Composable
 private fun TimeLabel(ms: Long) {
-    val minutes = TimeUnit.MILLISECONDS.toMinutes(ms)
-    val seconds = TimeUnit.MILLISECONDS.toSeconds(ms) % SECONDS_PER_MINUTE
     Text(
-        String.format(Locale.ROOT, "%d:%02d", minutes, seconds),
+        DateUtils.formatElapsedTime(TimeUnit.MILLISECONDS.toSeconds(ms)),
         style = MaterialTheme.typography.labelMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
 }
-
-private const val SECONDS_PER_MINUTE = 60
 
 @Preview
 @Composable

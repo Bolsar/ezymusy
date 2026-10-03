@@ -17,7 +17,9 @@ sealed interface YouTubeLink {
         /** Finds the first YouTube URL in [text] (share intents wrap it in a sentence). Null when none. */
         fun parse(text: String): YouTubeLink? {
             val raw = text.split(Regex("\\s+")).firstOrNull { it.contains("youtu") } ?: return null
-            val uri = runCatching { URI(raw.trim()) }.getOrNull() ?: return null
+            // Share text can wrap the URL in punctuation: "(…watch?v=ID)."
+            val uri = runCatching { URI(raw.trim('(', ')', '<', '>', '"', '.', ',', '!', '?')) }.getOrNull()
+                ?: return null
             val host = uri.host?.removePrefix("www.") ?: return null
             if (host !in HOSTS) return null
 

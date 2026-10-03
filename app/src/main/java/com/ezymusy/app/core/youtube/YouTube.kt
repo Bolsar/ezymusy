@@ -9,6 +9,7 @@ import org.schabi.newpipe.extractor.ServiceList
 import org.schabi.newpipe.extractor.downloader.Downloader
 import org.schabi.newpipe.extractor.downloader.Request
 import org.schabi.newpipe.extractor.downloader.Response
+import org.schabi.newpipe.extractor.exceptions.ReCaptchaException
 import org.schabi.newpipe.extractor.stream.AudioStream
 import org.schabi.newpipe.extractor.stream.AudioTrackType
 import org.schabi.newpipe.extractor.stream.DeliveryMethod
@@ -88,6 +89,8 @@ class YouTube(private val client: OkHttpClient) {
     }
 }
 
+private const val HTTP_TOO_MANY_REQUESTS = 429
+
 /** NewPipeExtractor's HTTP hook, backed by the app's shared OkHttp client. */
 private class OkHttpDownloader(private val client: OkHttpClient) : Downloader() {
     override fun execute(request: Request): Response {
@@ -101,6 +104,8 @@ private class OkHttpDownloader(private val client: OkHttpClient) : Downloader() 
             values.forEach { builder.addHeader(name, it) }
         }
         client.newCall(builder.build()).execute().use { response ->
+            // NewPipe expects rate limiting to surface as a captcha, not a parse error.
+            if (response.code == HTTP_TOO_MANY_REQUESTS) throw ReCaptchaException("reCaptcha", request.url())
             return Response(
                 response.code,
                 response.message,
