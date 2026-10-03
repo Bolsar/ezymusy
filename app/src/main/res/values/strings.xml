@@ -1,0 +1,16 @@
+<resources>
+    <string name="app_name">Ezymusy</string>
+    <string name="link_label">YouTube link</string>
+    <string name="link_placeholder">Paste a video link</string>
+    <string name="play_link">Play link</string>
+    <string name="error_not_youtube">That isn\'t a YouTube link. Copy the link from YouTube\'s Share button and paste it here.</string>
+    <string name="error_not_video_yet">Playlists and mixes aren\'t supported yet. Paste a single video link.</string>
+    <string name="error_load_failed">Couldn\'t load audio. Check your connection, then try again.</string>
+    <string name="retry">Try again</string>
+    <string name="empty_title">Nothing playing</string>
+    <string name="empty_body">Paste a YouTube video link above. Audio keeps playing when you lock the screen.</string>
+    <string name="loading">Loading audio…</string>
+    <string name="play">Play</string>
+    <string name="pause">Pause</string>
+    <string name="seek">Playback position</string>
+</resources>
