@@ -1,0 +1,32 @@
+# M3b: a track YouTube won't serve is skipped and greyed out.
+# Prep (no clearState): one playlist saved, and its position-1 track's videoId replaced by a
+# nonexistent one ("AAAAAAAAAAA", title "BROKEN") in databases/ezymusy.db via adb.
+appId: com.ezymusy.app
+---
+- launchApp
+- tapOn:
+    id: "link_row"
+- tapOn:
+    id: "track_row"
+    index: 0
+- extendedWaitUntil:
+    visible:
+      id: "mini_title"
+    timeout: 30000
+- tapOn:
+    id: "mini_player"
+- extendedWaitUntil:
+    visible: "Pause"
+    timeout: 20000
+- tapOn:
+    id: "next"
+# The broken track fails to extract, gets marked and skipped: track 2 plays.
+- extendedWaitUntil:
+    visible: "Becky G.*"
+    timeout: 30000
+- extendedWaitUntil:
+    visible: "Pause"
+    timeout: 20000
+- tapOn:
+    id: "back"
+- assertVisible: "Unavailable"

@@ -4,19 +4,20 @@ import android.app.Application
 import android.content.ComponentName
 import android.util.Log
 import androidx.annotation.OptIn
+import androidx.annotation.StringRes
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.media3.common.MediaItem
-import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.common.util.Util
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.ListenableFuture
+import com.ezymusy.app.R
 import com.ezymusy.app.core.data.Repository
 import com.ezymusy.app.core.playback.PlaybackService
 import com.ezymusy.app.core.playback.toMediaItem
@@ -39,7 +40,12 @@ sealed interface Playback {
 
     /** Fetching a queue (mix page, Shuffle all) before anything can play. */
     data object Loading : Playback
-    data object Failed : Playback
+
+    /** [outdated]: several tracks in a row failed to extract, so the app likely needs an update. */
+    data class Failed(val outdated: Boolean = false) : Playback {
+        @get:StringRes
+        val message get() = if (outdated) R.string.error_extractor_outdated else R.string.error_load_failed
+    }
     data class Ready(
         /** videoId of the current track, to highlight it in lists. */
         val mediaId: String?,
@@ -61,6 +67,7 @@ class PlayerViewModel(
     private val app: Application,
     private val youTube: YouTube,
     private val repository: Repository,
+    private val extractorOutdated: StateFlow<Boolean>,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow<Playback>(Playback.Idle)
@@ -81,16 +88,15 @@ class PlayerViewModel(
     private var ticker: Job? = null
 
     private val listener = object : Player.Listener {
+        // PlaybackService handles errors itself (drops the stream URL, skips broken tracks).
         override fun onEvents(player: Player, events: Player.Events) = publish()
-
-        override fun onPlayerError(error: PlaybackException) {
-            // The cached stream URL may be the cause (403, expired): never reuse it.
-            connected?.currentMediaItem?.mediaId?.let(youTube::invalidate)
-        }
     }
 
     init {
         connect()
+
+        // Set by PlaybackService when it gives up skipping broken tracks.
+        viewModelScope.launch { extractorOutdated.collect { publish() } }
 
         // Resume position updates when the screen becomes visible again.
         viewModelScope.launch {
@@ -155,7 +161,7 @@ class PlayerViewModel(
             } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
                 // Extraction failures come as many unrelated types (IO, parsing, ReCaptcha).
                 Log.w(TAG, "Could not load queue", e)
-                failedLoad = { load(block) }
+                if (generation == loadGeneration) failedLoad = { load(block) }
             } finally {
                 // A cancelled load finishes after its replacement started; leave the newer one's state alone.
                 if (generation == loadGeneration) {
@@ -231,7 +237,8 @@ class PlayerViewModel(
     private fun publish() {
         val player = connected
         val playback = when {
-            connectFailed || failedLoad != null || player?.playerError != null -> Playback.Failed
+            connectFailed || failedLoad != null -> Playback.Failed()
+            player?.playerError != null -> Playback.Failed(outdated = extractorOutdated.value)
             loading -> Playback.Loading
             player == null || player.mediaItemCount == 0 -> Playback.Idle
             else -> Playback.Ready(
@@ -271,8 +278,13 @@ class PlayerViewModel(
         private const val TAG = "Player"
         private const val TICK_MS = 500L
 
-        fun factory(app: Application, youTube: YouTube, repository: Repository) = viewModelFactory {
-            initializer { PlayerViewModel(app, youTube, repository) }
+        fun factory(
+            app: Application,
+            youTube: YouTube,
+            repository: Repository,
+            extractorOutdated: StateFlow<Boolean>,
+        ) = viewModelFactory {
+            initializer { PlayerViewModel(app, youTube, repository, extractorOutdated) }
         }
     }
 }

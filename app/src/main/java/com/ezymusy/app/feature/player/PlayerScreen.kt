@@ -92,7 +92,7 @@ fun NowPlayingScreen(
             when (playback) {
                 // Loads start from Library or Detail, where the mini player shows them.
                 Playback.Idle, Playback.Loading -> Unit
-                Playback.Failed -> FailedState(onRetry)
+                is Playback.Failed -> FailedState(playback, onRetry)
                 is Playback.Ready ->
                     Controls(playback, onTogglePlay, onSeek, onNext, onPrevious, onToggleShuffle, onCycleRepeat)
             }
@@ -140,9 +140,9 @@ fun MiniPlayer(
                         .weight(1f)
                         .padding(vertical = Dimens.SpaceM),
                 )
-                Playback.Failed -> {
+                is Playback.Failed -> {
                     Text(
-                        stringResource(R.string.error_load_failed),
+                        stringResource(playback.message),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.error,
                         modifier = Modifier.weight(1f),
@@ -176,10 +176,10 @@ fun MiniPlayer(
 }
 
 @Composable
-private fun FailedState(onRetry: () -> Unit) {
+private fun FailedState(failed: Playback.Failed, onRetry: () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceS)) {
         Text(
-            stringResource(R.string.error_load_failed),
+            stringResource(failed.message),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.error,
         )

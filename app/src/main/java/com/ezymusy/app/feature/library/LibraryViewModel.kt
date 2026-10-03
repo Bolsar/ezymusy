@@ -35,6 +35,11 @@ class LibraryViewModel(private val repository: Repository) : ViewModel() {
     val links: StateFlow<List<LinkRow>?> = repository.links
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), null)
 
+    init {
+        // Playlists change on YouTube; refresh stale ones each time the app opens.
+        viewModelScope.launch { repository.syncStale() }
+    }
+
     fun onInputChange(text: String) = _add.update { it.copy(input = text, error = null) }
 
     fun addInput() = add(_add.value.input)

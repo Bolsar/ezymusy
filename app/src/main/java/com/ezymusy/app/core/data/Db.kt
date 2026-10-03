@@ -26,6 +26,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.withContext
+import java.util.concurrent.TimeUnit
 
 enum class LinkType { VIDEO, PLAYLIST, MIX }
 
@@ -71,6 +72,8 @@ data class LinkDetail(val link: LinkEntity, val tracks: List<TrackEntity>)
 
 data class LinkRow(val id: Long, val type: LinkType, val title: String, val trackCount: Int)
 
+// One small query per screen or sync need; grouping them would only hide the SQL.
+@Suppress("TooManyFunctions")
 @Dao
 abstract class LibraryDao {
     @Query(
@@ -103,6 +106,30 @@ abstract class LibraryDao {
     @Query("SELECT id FROM links WHERE sourceId = :sourceId")
     abstract suspend fun linkId(sourceId: String): Long?
 
+    @Query("UPDATE tracks SET unavailable = 1 WHERE videoId = :videoId")
+    abstract suspend fun markUnavailable(videoId: String)
+
+    @Query("SELECT * FROM links WHERE type = 'PLAYLIST' AND lastSyncedAt < :before")
+    abstract suspend fun playlistsSyncedBefore(before: Long): List<LinkEntity>
+
+    @Query("SELECT videoId FROM tracks WHERE linkId = :linkId AND unavailable")
+    protected abstract suspend fun unavailableIds(linkId: Long): List<String>
+
+    @Query("DELETE FROM tracks WHERE linkId = :linkId")
+    protected abstract suspend fun deleteTracks(linkId: Long)
+
+    @Query("UPDATE links SET title = :title, artworkUrl = :artworkUrl, lastSyncedAt = :syncedAt WHERE id = :linkId")
+    protected abstract suspend fun updateLink(linkId: Long, title: String, artworkUrl: String?, syncedAt: Long)
+
+    /** Replaces a playlist's tracks with a fresh fetch, keeping tracks already known to be unavailable marked. */
+    @Transaction
+    open suspend fun replaceTracks(linkId: Long, playlist: Playlist, syncedAt: Long) {
+        val unavailable = unavailableIds(linkId).toSet()
+        deleteTracks(linkId)
+        updateLink(linkId, playlist.title, playlist.artworkUrl, syncedAt)
+        insertTracks(linkId, playlist.tracks, unavailable)
+    }
+
     @Insert
     protected abstract suspend fun insert(link: LinkEntity): Long
 
@@ -112,20 +139,25 @@ abstract class LibraryDao {
     @Transaction
     open suspend fun insert(link: LinkEntity, tracks: List<Track>): Long {
         val id = insert(link)
+        insertTracks(id, tracks, emptySet())
+        return id
+    }
+
+    private suspend fun insertTracks(linkId: Long, tracks: List<Track>, unavailable: Set<String>) {
         insert(
             tracks.mapIndexed { i, t ->
                 TrackEntity(
-                    linkId = id,
+                    linkId = linkId,
                     videoId = t.videoId,
                     title = t.title,
                     artist = t.artist,
                     artworkUrl = t.artworkUrl,
                     durationSec = t.durationSec,
                     position = i,
+                    unavailable = t.videoId in unavailable,
                 )
             },
         )
-        return id
     }
 }
 
@@ -143,6 +175,7 @@ abstract class AppDb : RoomDatabase() {
 }
 
 private const val TAG = "Repository"
+private val SYNC_INTERVAL_MS = TimeUnit.HOURS.toMillis(6)
 
 /** The user's saved links and their tracks. Network fetches happen here, off the main thread. */
 class Repository(private val dao: LibraryDao, private val youTube: YouTube) {
@@ -155,6 +188,23 @@ class Repository(private val dao: LibraryDao, private val youTube: YouTube) {
     }
 
     suspend fun delete(linkId: Long) = dao.delete(linkId)
+
+    suspend fun markUnavailable(videoId: String) = dao.markUnavailable(videoId)
+
+    /** Refetches playlists last synced over [SYNC_INTERVAL_MS] ago. One failing playlist doesn't stop the rest. */
+    suspend fun syncStale() {
+        val now = System.currentTimeMillis()
+        for (link in dao.playlistsSyncedBefore(now - SYNC_INTERVAL_MS)) {
+            try {
+                val playlist = withContext(Dispatchers.IO) { youTube.playlist(link.sourceId) }
+                dao.replaceTracks(link.id, playlist, now)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
+                Log.w(TAG, "Could not sync playlist ${link.sourceId}", e)
+            }
+        }
+    }
 
     suspend fun setIncludeInShuffle(linkId: Long, include: Boolean) = dao.setIncludeInShuffle(linkId, include)
 
