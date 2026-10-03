@@ -1,0 +1,10 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Three bars of an equalizer: plain mark, no gradients. -->
+    <path android:fillColor="@color/lime" android:pathData="M38,46h8v24h-8z" />
+    <path android:fillColor="@color/lime" android:pathData="M50,36h8v34h-8z" />
+    <path android:fillColor="@color/lime" android:pathData="M62,52h8v18h-8z" />
+</vector>

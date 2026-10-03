@@ -1,0 +1,27 @@
+# M1: paste a single video link, audio starts, pause works.
+appId: com.ezymusy.app
+---
+- launchApp:
+    clearState: true
+- tapOn:
+    id: "link_input"
+- inputText: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+- tapOn:
+    id: "play_link"
+- extendedWaitUntil:
+    visible:
+      id: "now_title"
+    timeout: 30000
+- extendedWaitUntil:
+    visible: "Pause"
+    timeout: 20000
+- tapOn:
+    id: "play_pause"
+- extendedWaitUntil:
+    visible: "Play"
+    timeout: 5000
+- tapOn:
+    id: "play_pause"
+- extendedWaitUntil:
+    visible: "Pause"
+    timeout: 10000
