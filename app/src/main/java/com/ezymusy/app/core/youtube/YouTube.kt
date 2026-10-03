@@ -42,6 +42,9 @@ class YouTube(private val client: OkHttpClient) {
     // ponytail: unbounded map; one entry per played track, cleared on process death. LRU if it ever matters.
     private val cache = ConcurrentHashMap<String, Resolved>()
 
+    // Where each live mix continues. In memory only: mixes restart fresh after process death.
+    private val mixPages = ConcurrentHashMap<String, Page>()
+
     init {
         NewPipe.init(OkHttpDownloader(client))
     }
@@ -63,6 +66,30 @@ class YouTube(private val client: OkHttpClient) {
         }
         return Playlist(info.name, info.thumbnails.largest(), items.map { it.toTrack() })
     }
+
+    /** First page of a live mix. Later pages come from [moreMix]. */
+    fun mix(mixId: String, seedVideoId: String?): Playlist {
+        val url = mixUrl(mixId, seedVideoId)
+        val info = PlaylistInfo.getInfo(ServiceList.YouTube, url)
+        rememberPage(mixId, info.nextPage)
+        return Playlist(info.name, info.thumbnails.largest(), info.relatedItems.map { it.toTrack() })
+    }
+
+    /** The next page of a mix started with [mix]; empty when it has no more. */
+    fun moreMix(mixId: String, seedVideoId: String?): List<Track> {
+        val page = mixPages[mixId] ?: return emptyList()
+        val more = PlaylistInfo.getMoreItems(ServiceList.YouTube, mixUrl(mixId, seedVideoId), page)
+        rememberPage(mixId, more.nextPage)
+        return more.items.map { it.toTrack() }
+    }
+
+    private fun rememberPage(mixId: String, page: Page?) {
+        if (page != null && Page.isValid(page)) mixPages[mixId] = page else mixPages.remove(mixId)
+    }
+
+    private fun mixUrl(mixId: String, seedVideoId: String?) =
+        seedVideoId?.let { "https://www.youtube.com/watch?v=$it&list=$mixId" }
+            ?: "https://www.youtube.com/playlist?list=$mixId"
 
     /** Drop a cached stream URL, for example after the server answered 403. */
     fun invalidate(videoId: String) {

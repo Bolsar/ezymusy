@@ -3,17 +3,23 @@ package com.ezymusy.app.feature.library
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -41,6 +47,7 @@ import com.ezymusy.app.core.designsystem.EzymusyTheme
 fun LibraryRoute(
     viewModel: LibraryViewModel,
     onOpenLink: (Long) -> Unit,
+    onShuffleAll: () -> Unit,
     modifier: Modifier = Modifier,
     player: @Composable () -> Unit = {},
 ) {
@@ -52,6 +59,7 @@ fun LibraryRoute(
         onInputChange = viewModel::onInputChange,
         onAdd = viewModel::addInput,
         onOpenLink = onOpenLink,
+        onShuffleAll = onShuffleAll,
         modifier = modifier,
         player = player,
     )
@@ -64,6 +72,7 @@ fun LibraryScreen(
     onInputChange: (String) -> Unit,
     onAdd: () -> Unit,
     onOpenLink: (Long) -> Unit,
+    onShuffleAll: () -> Unit,
     modifier: Modifier = Modifier,
     player: @Composable () -> Unit = {},
 ) {
@@ -76,6 +85,19 @@ fun LibraryScreen(
         ) {
             Text(stringResource(R.string.app_name), style = MaterialTheme.typography.titleLarge)
             AddLink(add, onInputChange, onAdd)
+            if (!links.isNullOrEmpty()) {
+                FilledTonalButton(
+                    onClick = onShuffleAll,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = Dimens.TouchTarget)
+                        .testTag("shuffle_all"),
+                ) {
+                    Icon(Icons.Rounded.Shuffle, contentDescription = null)
+                    Spacer(Modifier.width(Dimens.SpaceS))
+                    Text(stringResource(R.string.shuffle_all))
+                }
+            }
             Column(Modifier.weight(1f)) {
                 when {
                     links == null -> Unit // first DB read, a few ms
@@ -167,6 +189,7 @@ private fun LinkList(links: List<LinkRow>, onOpenLink: (Long) -> Unit) {
                 Text(
                     when (link.type) {
                         LinkType.VIDEO -> stringResource(R.string.link_video)
+                        LinkType.MIX -> stringResource(R.string.link_mix)
                         LinkType.PLAYLIST ->
                             pluralStringResource(R.plurals.link_playlist, link.trackCount, link.trackCount)
                     },
@@ -192,6 +215,7 @@ private fun LibraryPreview() {
             onInputChange = {},
             onAdd = {},
             onOpenLink = {},
+            onShuffleAll = {},
         )
     }
 }

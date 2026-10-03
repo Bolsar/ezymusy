@@ -43,6 +43,14 @@ class YouTubeLinkTest {
     }
 
     @Test
+    fun `youtube music RDCLAK lists are fixed playlists, not mixes`() {
+        assertEquals(
+            YouTubeLink.Playlist("RDCLAK5uy_kmPRjHDECIcuVwnKsx2Ng7fyNgFKWNJFs"),
+            YouTubeLink.parse("https://music.youtube.com/playlist?list=RDCLAK5uy_kmPRjHDECIcuVwnKsx2Ng7fyNgFKWNJFs"),
+        )
+    }
+
+    @Test
     fun `non youtube or malformed input is rejected`() {
         listOf(
             "",

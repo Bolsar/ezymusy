@@ -14,6 +14,9 @@ sealed interface YouTubeLink {
         private val HOSTS = setOf("youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be")
         private val VIDEO_ID = Regex("[A-Za-z0-9_-]{11}")
 
+        // RDCLAK… is a fixed YouTube Music playlist despite the RD prefix.
+        private fun isMix(list: String) = list.startsWith("RD") && !list.startsWith("RDCLAK")
+
         /** Finds the first YouTube URL in [text] (share intents wrap it in a sentence). Null when none. */
         fun parse(text: String): YouTubeLink? {
             val raw = text.split(Regex("\\s+")).firstOrNull { it.contains("youtu") } ?: return null
@@ -36,7 +39,7 @@ sealed interface YouTubeLink {
             val list = query["list"]?.takeIf { it.isNotBlank() }
 
             return when {
-                list != null && list.startsWith("RD") -> Mix(list, videoId)
+                list != null && isMix(list) -> Mix(list, videoId)
                 list != null -> Playlist(list)
                 videoId != null -> Video(videoId)
                 else -> null

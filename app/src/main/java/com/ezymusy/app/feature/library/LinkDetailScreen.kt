@@ -3,6 +3,7 @@ package com.ezymusy.app.feature.library
 import android.text.format.DateUtils
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -21,6 +22,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -32,12 +34,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ezymusy.app.R
 import com.ezymusy.app.core.data.LinkDetail
+import com.ezymusy.app.core.data.LinkEntity
+import com.ezymusy.app.core.data.LinkType
 import com.ezymusy.app.core.data.TrackEntity
 import com.ezymusy.app.core.designsystem.BackBar
 import com.ezymusy.app.core.designsystem.Dimens
@@ -50,6 +55,7 @@ fun LinkDetailRoute(
     linkId: Long,
     currentVideoId: String?,
     onPlay: (List<Track>, Int) -> Unit,
+    onPlayMix: (mixId: String, seedVideoId: String?) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
     player: @Composable () -> Unit = {},
@@ -59,6 +65,8 @@ fun LinkDetailRoute(
         detail = detail,
         currentVideoId = currentVideoId,
         onPlay = onPlay,
+        onPlayMix = onPlayMix,
+        onIncludeInShuffle = { viewModel.setIncludeInShuffle(linkId, it) },
         onDelete = {
             viewModel.delete(linkId)
             onBack()
@@ -74,6 +82,8 @@ fun LinkDetailScreen(
     detail: LinkDetail?,
     currentVideoId: String?,
     onPlay: (List<Track>, Int) -> Unit,
+    onPlayMix: (mixId: String, seedVideoId: String?) -> Unit,
+    onIncludeInShuffle: (Boolean) -> Unit,
     onDelete: () -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
@@ -87,22 +97,33 @@ fun LinkDetailScreen(
                 .padding(horizontal = Dimens.SpaceL, vertical = Dimens.SpaceS),
             verticalArrangement = Arrangement.spacedBy(Dimens.SpaceL),
         ) {
-            BackBar(onBack = onBack, title = detail?.title.orEmpty()) {
+            BackBar(onBack = onBack, title = detail?.link?.title.orEmpty()) {
                 IconButton(onClick = { confirmDelete = true }, modifier = Modifier.testTag("delete_link")) {
                     Icon(Icons.Rounded.Delete, contentDescription = stringResource(R.string.delete_link))
                 }
             }
+            val link = detail?.link
             val tracks = remember(detail) { detail?.tracks?.map(TrackEntity::toTrack).orEmpty() }
+            if (link?.type == LinkType.MIX) {
+                Text(
+                    stringResource(R.string.mix_body),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             Button(
-                onClick = { onPlay(tracks, 0) },
-                enabled = tracks.isNotEmpty(),
+                onClick = {
+                    if (link?.type == LinkType.MIX) onPlayMix(link.sourceId, link.seedVideoId) else onPlay(tracks, 0)
+                },
+                enabled = link?.type == LinkType.MIX || tracks.isNotEmpty(),
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(min = Dimens.TouchTarget)
                     .testTag("play_all"),
             ) {
-                Text(stringResource(R.string.play_all))
+                Text(stringResource(if (link?.type == LinkType.MIX) R.string.play_mix else R.string.play_all))
             }
+            if (link != null) IncludeInShuffle(link.includeInShuffle, onIncludeInShuffle)
             LazyColumn(Modifier.weight(1f)) {
                 itemsIndexed(tracks, key = { i, _ -> i }) { i, track ->
                     TrackRow(track, isCurrent = track.videoId == currentVideoId, onClick = { onPlay(tracks, i) })
@@ -125,6 +146,26 @@ fun LinkDetailScreen(
                 TextButton(onClick = { confirmDelete = false }) { Text(stringResource(R.string.cancel)) }
             },
         )
+    }
+}
+
+@Composable
+private fun IncludeInShuffle(checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = Dimens.TouchTarget)
+            .toggleable(value = checked, role = Role.Switch, onValueChange = onCheckedChange)
+            .testTag("include_in_shuffle"),
+    ) {
+        Text(
+            stringResource(R.string.include_in_shuffle),
+            style = MaterialTheme.typography.bodyLarge,
+            modifier = Modifier.weight(1f),
+        )
+        // The whole row toggles; the switch only shows the state.
+        Switch(checked = checked, onCheckedChange = null)
     }
 }
 
@@ -174,7 +215,7 @@ private fun LinkDetailPreview() {
     EzymusyTheme {
         LinkDetailScreen(
             detail = LinkDetail(
-                "Lo-fi beats to study to",
+                LinkEntity(1, "PL1", LinkType.PLAYLIST, "Lo-fi beats to study to", null, lastSyncedAt = 0, addedAt = 0),
                 listOf(
                     TrackEntity(1, 1, "a", "Snowman", "Lofi Girl", null, 183, 0),
                     TrackEntity(2, 1, "b", "Coffee shop", "Lofi Girl", null, 201, 1),
@@ -182,6 +223,8 @@ private fun LinkDetailPreview() {
             ),
             currentVideoId = "b",
             onPlay = { _, _ -> },
+            onPlayMix = { _, _ -> },
+            onIncludeInShuffle = {},
             onDelete = {},
             onBack = {},
         )

@@ -34,7 +34,9 @@ private const val NOW_PLAYING = 0L
 class MainActivity : ComponentActivity() {
     private val container by lazy { (application as App).container }
     private val library: LibraryViewModel by viewModels { LibraryViewModel.factory(container.repository) }
-    private val player: PlayerViewModel by viewModels { PlayerViewModel.factory(application, container.youTube) }
+    private val player: PlayerViewModel by viewModels {
+        PlayerViewModel.factory(application, container.youTube, container.repository)
+    }
 
     @OptIn(ExperimentalComposeUiApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -62,7 +64,13 @@ class MainActivity : ComponentActivity() {
 
         val miniPlayer = @Composable { MiniPlayer(player, onOpen = { push(NOW_PLAYING) }) }
         when (val top = stack.lastOrNull()) {
-            null -> LibraryRoute(library, onOpenLink = push, modifier = modifier, player = miniPlayer)
+            null -> LibraryRoute(
+                library,
+                onOpenLink = push,
+                onShuffleAll = player::shuffleAll,
+                modifier = modifier,
+                player = miniPlayer,
+            )
             NOW_PLAYING -> NowPlayingRoute(player, onBack = pop, modifier = modifier)
             else -> {
                 val playback by player.state.collectAsStateWithLifecycle()
@@ -71,6 +79,7 @@ class MainActivity : ComponentActivity() {
                     linkId = top,
                     currentVideoId = (playback as? Playback.Ready)?.mediaId,
                     onPlay = player::play,
+                    onPlayMix = player::playMix,
                     onBack = pop,
                     modifier = modifier,
                     player = miniPlayer,

@@ -1,0 +1,62 @@
+# M3a: add a playlist and a live mix, Shuffle all, shuffle/repeat controls, play the mix.
+appId: com.ezymusy.app
+---
+- launchApp:
+    clearState: true
+- tapOn:
+    id: "link_input"
+- inputText: "https://www.youtube.com/playlist?list=PLFgquLnL59alCl_2TQvOiD5Vgm1hCaGSI"
+- tapOn:
+    id: "add_link"
+- extendedWaitUntil:
+    visible: "Playlist · .* tracks"
+    timeout: 60000
+- tapOn:
+    id: "link_input"
+- inputText: "https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=RDdQw4w9WgXcQ"
+- tapOn:
+    id: "add_link"
+- extendedWaitUntil:
+    visible: "Mix"
+    timeout: 60000
+- tapOn:
+    id: "shuffle_all"
+- extendedWaitUntil:
+    visible:
+      id: "mini_title"
+    timeout: 30000
+- tapOn:
+    id: "mini_player"
+- extendedWaitUntil:
+    visible: "Pause"
+    timeout: 20000
+- tapOn:
+    id: "shuffle"
+- assertVisible:
+    id: "shuffle"
+    checked: true
+- tapOn: "Repeat"
+- assertVisible: "Repeat all"
+- tapOn: "Repeat all"
+- assertVisible: "Repeat one"
+- tapOn:
+    id: "back"
+# Open the mix and play it live.
+- tapOn: "Mix"
+- assertVisible: "A mix never ends.*"
+- tapOn:
+    id: "include_in_shuffle"
+- tapOn:
+    id: "play_all"
+- extendedWaitUntil:
+    visible:
+      id: "mini_title"
+    timeout: 30000
+- tapOn:
+    id: "mini_player"
+- extendedWaitUntil:
+    visible: "Pause"
+    timeout: 20000
+- assertVisible:
+    id: "shuffle"
+    checked: false
