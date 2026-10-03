@@ -36,6 +36,9 @@ import kotlinx.coroutines.withContext
 
 sealed interface Playback {
     data object Idle : Playback
+
+    /** Fetching a queue (mix page, Shuffle all) before anything can play. */
+    data object Loading : Playback
     data object Failed : Playback
     data class Ready(
         /** videoId of the current track, to highlight it in lists. */
@@ -68,6 +71,13 @@ class PlayerViewModel(
     private var connected: MediaController? = null
 
     private var connectFailed = false
+
+    private var loadJob: Job? = null
+    private var loadGeneration = 0
+    private var loading = false
+
+    /** Re-runs the queue load that failed; Retry calls it. */
+    private var failedLoad: (() -> Unit)? = null
     private var ticker: Job? = null
 
     private val listener = object : Player.Listener {
@@ -113,25 +123,31 @@ class PlayerViewModel(
 
     /** Replaces the queue with [tracks] and starts at [startIndex]. Stream URLs resolve as each item loads. */
     fun play(tracks: List<Track>, startIndex: Int = 0) {
-        viewModelScope.launch { start(tracks.map { it.toMediaItem() }, startIndex) }
+        load { start(tracks.map { it.toMediaItem() }, startIndex) }
     }
 
     /** Plays the first page of a live mix; the service appends later pages as it nears the end. */
-    fun playMix(mixId: String, seedVideoId: String?) = launchLoading {
+    fun playMix(mixId: String, seedVideoId: String?) = load {
         val tracks = withContext(Dispatchers.IO) { youTube.mix(mixId, seedVideoId).tracks }
         start(tracks.map { it.toMediaItem(mixId, seedVideoId) }, 0)
     }
 
     /** Every track of the links in Shuffle all, in random order. */
-    fun shuffleAll() = launchLoading {
+    fun shuffleAll() = load {
         // Shuffled here, not with shuffle mode: ExoPlayer's shuffle order wouldn't start at the first item,
         // so tracks ordered before it would never play.
         val tracks = repository.shuffleAll().shuffled()
         if (tracks.isNotEmpty()) start(tracks.map { it.toMediaItem() }, 0)
     }
 
-    private fun launchLoading(block: suspend () -> Unit) {
-        viewModelScope.launch {
+    /** Runs one queue load at a time: a newer request cancels the older, so a slow fetch never overrides it. */
+    private fun load(block: suspend () -> Unit) {
+        loadJob?.cancel()
+        val generation = ++loadGeneration
+        failedLoad = null
+        loading = true
+        publish()
+        loadJob = viewModelScope.launch {
             try {
                 block()
             } catch (e: CancellationException) {
@@ -139,7 +155,13 @@ class PlayerViewModel(
             } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
                 // Extraction failures come as many unrelated types (IO, parsing, ReCaptcha).
                 Log.w(TAG, "Could not load queue", e)
-                _state.value = Playback.Failed
+                failedLoad = { load(block) }
+            } finally {
+                // A cancelled load finishes after its replacement started; leave the newer one's state alone.
+                if (generation == loadGeneration) {
+                    loading = false
+                    publish()
+                }
             }
         }
     }
@@ -172,6 +194,10 @@ class PlayerViewModel(
 
     /** Re-prepares the current item with a freshly resolved stream URL, at the same position. */
     fun retry() {
+        failedLoad?.let {
+            it()
+            return
+        }
         val player = connected ?: run {
             // Never reached the service: try again, but only once the previous attempt has failed.
             if (connectFailed) connect()
@@ -205,7 +231,8 @@ class PlayerViewModel(
     private fun publish() {
         val player = connected
         val playback = when {
-            connectFailed || player?.playerError != null -> Playback.Failed
+            connectFailed || failedLoad != null || player?.playerError != null -> Playback.Failed
+            loading -> Playback.Loading
             player == null || player.mediaItemCount == 0 -> Playback.Idle
             else -> Playback.Ready(
                 mediaId = player.currentMediaItem?.mediaId,

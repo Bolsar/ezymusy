@@ -30,9 +30,12 @@ appId: com.ezymusy.app
 - extendedWaitUntil:
     visible: "Pause"
     timeout: 20000
-- tapOn: "Shuffle off"
-- assertVisible: "Shuffle on"
-- tapOn: "Repeat off"
+- tapOn:
+    id: "shuffle"
+- assertVisible:
+    id: "shuffle"
+    checked: true
+- tapOn: "Repeat"
 - assertVisible: "Repeat all"
 - tapOn: "Repeat all"
 - assertVisible: "Repeat one"
@@ -54,4 +57,6 @@ appId: com.ezymusy.app
 - extendedWaitUntil:
     visible: "Pause"
     timeout: 20000
-- assertVisible: "Shuffle off"
+- assertVisible:
+    id: "shuffle"
+    checked: false

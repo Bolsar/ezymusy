@@ -33,6 +33,7 @@ private const val TAG = "Playback"
 
 // Fetch the next mix page while this many items are still ahead, so Next never runs dry.
 private const val MIX_REFILL_AHEAD = 3
+private const val MIX_PAGES_PER_REFILL = 3
 
 /** Owns the player so audio keeps going with the screen off or the app in the background. */
 @OptIn(UnstableApi::class)
@@ -83,12 +84,22 @@ class PlaybackService : MediaSessionService() {
         refilling = true
         scope.launch {
             try {
-                val page = withContext(Dispatchers.IO) { youTube.moreMix(mixId, extras.getString(EXTRA_SEED)) }
-                // The user started something else meanwhile.
-                if (player.currentMediaItem?.mediaMetadata?.extras?.getString(EXTRA_MIX) != mixId) return@launch
                 // Mix pages overlap; a track already queued would play twice.
                 val queued = (0 until player.mediaItemCount).map { player.getMediaItemAt(it).mediaId }.toSet()
-                val fresh = page.filter { it.videoId !in queued }.distinctBy { it.videoId }
+                val fresh = withContext(Dispatchers.IO) {
+                    // A page of only repeats adds nothing and fires no event to try again, so read on a little.
+                    var tracks = emptyList<Track>()
+                    repeat(MIX_PAGES_PER_REFILL) {
+                        if (tracks.isEmpty()) {
+                            tracks = youTube.moreMix(mixId, extras.getString(EXTRA_SEED))
+                                .filter { it.videoId !in queued }
+                                .distinctBy { it.videoId }
+                        }
+                    }
+                    tracks
+                }
+                // The user started something else meanwhile.
+                if (player.currentMediaItem?.mediaMetadata?.extras?.getString(EXTRA_MIX) != mixId) return@launch
                 Log.i(TAG, "Mix refill +${fresh.size}")
                 player.addMediaItems(fresh.map { it.toMediaItem(mixId, extras.getString(EXTRA_SEED)) })
             } catch (e: CancellationException) {

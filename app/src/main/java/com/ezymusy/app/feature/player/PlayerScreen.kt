@@ -90,7 +90,8 @@ fun NowPlayingScreen(
             BackBar(onBack = onBack)
             Spacer(Modifier.weight(1f))
             when (playback) {
-                Playback.Idle -> Unit
+                // Loads start from Library or Detail, where the mini player shows them.
+                Playback.Idle, Playback.Loading -> Unit
                 Playback.Failed -> FailedState(onRetry)
                 is Playback.Ready ->
                     Controls(playback, onTogglePlay, onSeek, onNext, onPrevious, onToggleShuffle, onCycleRepeat)
@@ -131,6 +132,14 @@ fun MiniPlayer(
         ) {
             when (playback) {
                 Playback.Idle -> Unit
+                Playback.Loading -> Text(
+                    stringResource(R.string.loading),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(vertical = Dimens.SpaceM),
+                )
                 Playback.Failed -> {
                     Text(
                         stringResource(R.string.error_load_failed),
@@ -232,8 +241,8 @@ private fun Controls(
                 onCheckedChange = { onToggleShuffle() },
                 modifier = Modifier.testTag("shuffle"),
             ) {
-                val label = if (playback.shuffle) R.string.shuffle_on else R.string.shuffle_off
-                Icon(Icons.Rounded.Shuffle, contentDescription = stringResource(label))
+                // The toggle already announces on/off.
+                Icon(Icons.Rounded.Shuffle, contentDescription = stringResource(R.string.shuffle))
             }
             IconButton(onClick = onPrevious, modifier = Modifier.testTag("previous")) {
                 Icon(Icons.Rounded.SkipPrevious, contentDescription = stringResource(R.string.previous))
@@ -259,7 +268,7 @@ private fun RepeatButton(@Player.RepeatMode repeatMode: Int, onCycleRepeat: () -
     val (icon, label) = when (repeatMode) {
         Player.REPEAT_MODE_ONE -> Icons.Rounded.RepeatOne to R.string.repeat_one
         Player.REPEAT_MODE_ALL -> Icons.Rounded.Repeat to R.string.repeat_all
-        else -> Icons.Rounded.Repeat to R.string.repeat_off
+        else -> Icons.Rounded.Repeat to R.string.repeat
     }
     IconToggleButton(
         checked = repeatMode != Player.REPEAT_MODE_OFF,

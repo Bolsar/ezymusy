@@ -173,7 +173,8 @@ class Repository(private val dao: LibraryDao, private val youTube: YouTube) {
                 }
             }
         }
-        dao.shuffleTracks().map(TrackEntity::toTrack) + mixes.awaitAll().flatten()
+        // A video saved in two links plays once.
+        (dao.shuffleTracks().map(TrackEntity::toTrack) + mixes.awaitAll().flatten()).distinctBy { it.videoId }
     }
 
     /** Stores [link] with its tracks and returns its id. A link that is already saved is not fetched again. */
