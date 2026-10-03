@@ -116,7 +116,11 @@ class PlayerViewModel(
 
     /** Re-prepares the current item with a freshly resolved stream URL, at the same position. */
     fun retry() {
-        val player = connected ?: return connect() // never reached the service: try again
+        val player = connected ?: run {
+            // Never reached the service: try again, but only once the previous attempt has failed.
+            if (connectFailed) connect()
+            return
+        }
         player.currentMediaItem?.mediaId?.let(youTube::invalidate)
         player.prepare()
         player.play()

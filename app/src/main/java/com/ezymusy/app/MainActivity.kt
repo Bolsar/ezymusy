@@ -57,7 +57,7 @@ class MainActivity : ComponentActivity() {
             saver = listSaver(save = { it.toList() }, restore = { it.toMutableStateList() }),
         ) { mutableStateListOf<Long>() }
         val push: (Long) -> Unit = { stack += it }
-        val pop: () -> Unit = { stack.removeAt(stack.lastIndex) }
+        val pop: () -> Unit = { stack.removeLastOrNull() }
         BackHandler(enabled = stack.isNotEmpty(), onBack = pop)
 
         val miniPlayer = @Composable { MiniPlayer(player, onOpen = { push(NOW_PLAYING) }) }
