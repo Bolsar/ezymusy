@@ -15,11 +15,15 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Repeat
+import androidx.compose.material.icons.rounded.RepeatOne
+import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.SkipPrevious
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconToggleButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
@@ -39,6 +43,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.media3.common.Player
 import com.ezymusy.app.R
 import com.ezymusy.app.core.designsystem.BackBar
 import com.ezymusy.app.core.designsystem.Dimens
@@ -56,6 +61,8 @@ fun NowPlayingRoute(viewModel: PlayerViewModel, onBack: () -> Unit, modifier: Mo
         onSeek = viewModel::seekTo,
         onNext = viewModel::next,
         onPrevious = viewModel::previous,
+        onToggleShuffle = viewModel::toggleShuffle,
+        onCycleRepeat = viewModel::cycleRepeat,
         modifier = modifier,
     )
 }
@@ -69,6 +76,8 @@ fun NowPlayingScreen(
     onSeek: (Long) -> Unit,
     onNext: () -> Unit,
     onPrevious: () -> Unit,
+    onToggleShuffle: () -> Unit,
+    onCycleRepeat: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Surface(modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
@@ -83,7 +92,8 @@ fun NowPlayingScreen(
             when (playback) {
                 Playback.Idle -> Unit
                 Playback.Failed -> FailedState(onRetry)
-                is Playback.Ready -> Controls(playback, onTogglePlay, onSeek, onNext, onPrevious)
+                is Playback.Ready ->
+                    Controls(playback, onTogglePlay, onSeek, onNext, onPrevious, onToggleShuffle, onCycleRepeat)
             }
             Spacer(Modifier.weight(1f))
         }
@@ -177,6 +187,8 @@ private fun Controls(
     onSeek: (Long) -> Unit,
     onNext: () -> Unit,
     onPrevious: () -> Unit,
+    onToggleShuffle: () -> Unit,
+    onCycleRepeat: () -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceS)) {
         Text(
@@ -212,9 +224,17 @@ private fun Controls(
         }
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(Dimens.SpaceXl, Alignment.CenterHorizontally),
+            horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            IconToggleButton(
+                checked = playback.shuffle,
+                onCheckedChange = { onToggleShuffle() },
+                modifier = Modifier.testTag("shuffle"),
+            ) {
+                val label = if (playback.shuffle) R.string.shuffle_on else R.string.shuffle_off
+                Icon(Icons.Rounded.Shuffle, contentDescription = stringResource(label))
+            }
             IconButton(onClick = onPrevious, modifier = Modifier.testTag("previous")) {
                 Icon(Icons.Rounded.SkipPrevious, contentDescription = stringResource(R.string.previous))
             }
@@ -229,7 +249,24 @@ private fun Controls(
             IconButton(onClick = onNext, enabled = playback.hasNext, modifier = Modifier.testTag("next")) {
                 Icon(Icons.Rounded.SkipNext, contentDescription = stringResource(R.string.next))
             }
+            RepeatButton(playback.repeatMode, onCycleRepeat)
         }
+    }
+}
+
+@Composable
+private fun RepeatButton(@Player.RepeatMode repeatMode: Int, onCycleRepeat: () -> Unit) {
+    val (icon, label) = when (repeatMode) {
+        Player.REPEAT_MODE_ONE -> Icons.Rounded.RepeatOne to R.string.repeat_one
+        Player.REPEAT_MODE_ALL -> Icons.Rounded.Repeat to R.string.repeat_all
+        else -> Icons.Rounded.Repeat to R.string.repeat_off
+    }
+    IconToggleButton(
+        checked = repeatMode != Player.REPEAT_MODE_OFF,
+        onCheckedChange = { onCycleRepeat() },
+        modifier = Modifier.testTag("repeat"),
+    ) {
+        Icon(icon, contentDescription = stringResource(label))
     }
 }
 
@@ -265,6 +302,8 @@ private fun NowPlayingPreview() {
             onSeek = {},
             onNext = {},
             onPrevious = {},
+            onToggleShuffle = {},
+            onCycleRepeat = {},
         )
     }
 }

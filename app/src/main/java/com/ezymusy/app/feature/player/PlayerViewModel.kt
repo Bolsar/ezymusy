@@ -9,6 +9,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
@@ -16,11 +17,14 @@ import androidx.media3.common.util.Util
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.ListenableFuture
+import com.ezymusy.app.core.data.Repository
 import com.ezymusy.app.core.playback.PlaybackService
 import com.ezymusy.app.core.playback.toMediaItem
 import com.ezymusy.app.core.youtube.Track
 import com.ezymusy.app.core.youtube.YouTube
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -28,6 +32,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 sealed interface Playback {
     data object Idle : Playback
@@ -42,12 +47,17 @@ sealed interface Playback {
         val positionMs: Long,
         val durationMs: Long,
         val hasNext: Boolean,
+        val shuffle: Boolean = false,
+        @param:Player.RepeatMode val repeatMode: Int = Player.REPEAT_MODE_OFF,
     ) : Playback
 }
 
+// One method per player command the UI offers; splitting them up would only scatter the controller.
+@Suppress("TooManyFunctions")
 class PlayerViewModel(
     private val app: Application,
     private val youTube: YouTube,
+    private val repository: Repository,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow<Playback>(Playback.Idle)
@@ -103,13 +113,59 @@ class PlayerViewModel(
 
     /** Replaces the queue with [tracks] and starts at [startIndex]. Stream URLs resolve as each item loads. */
     fun play(tracks: List<Track>, startIndex: Int = 0) {
+        viewModelScope.launch { start(tracks.map { it.toMediaItem() }, startIndex) }
+    }
+
+    /** Plays the first page of a live mix; the service appends later pages as it nears the end. */
+    fun playMix(mixId: String, seedVideoId: String?) = launchLoading {
+        val tracks = withContext(Dispatchers.IO) { youTube.mix(mixId, seedVideoId).tracks }
+        start(tracks.map { it.toMediaItem(mixId, seedVideoId) }, 0)
+    }
+
+    /** Every track of the links in Shuffle all, in random order. */
+    fun shuffleAll() = launchLoading {
+        // Shuffled here, not with shuffle mode: ExoPlayer's shuffle order wouldn't start at the first item,
+        // so tracks ordered before it would never play.
+        val tracks = repository.shuffleAll().shuffled()
+        if (tracks.isNotEmpty()) start(tracks.map { it.toMediaItem() }, 0)
+    }
+
+    private fun launchLoading(block: suspend () -> Unit) {
         viewModelScope.launch {
-            // A failed connection already shows the Failed state; nothing to queue into.
-            val player = runCatching { controller.await() }.getOrNull() ?: return@launch
-            player.run {
-                setMediaItems(tracks.map { it.toMediaItem() }, startIndex, 0)
-                prepare()
-                play()
+            try {
+                block()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
+                // Extraction failures come as many unrelated types (IO, parsing, ReCaptcha).
+                Log.w(TAG, "Could not load queue", e)
+                _state.value = Playback.Failed
+            }
+        }
+    }
+
+    private suspend fun start(items: List<MediaItem>, startIndex: Int) {
+        // A failed connection already shows the Failed state; nothing to queue into.
+        val player = runCatching { controller.await() }.getOrNull() ?: return
+        player.run {
+            shuffleModeEnabled = false
+            setMediaItems(items, startIndex, 0)
+            prepare()
+            play()
+        }
+    }
+
+    fun toggleShuffle() {
+        connected?.run { shuffleModeEnabled = !shuffleModeEnabled }
+    }
+
+    /** Off → all → one → off, like most music players. */
+    fun cycleRepeat() {
+        connected?.run {
+            repeatMode = when (repeatMode) {
+                Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL
+                Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE
+                else -> Player.REPEAT_MODE_OFF
             }
         }
     }
@@ -159,6 +215,8 @@ class PlayerViewModel(
                 positionMs = player.currentPosition,
                 durationMs = player.duration.coerceAtLeast(0),
                 hasNext = player.hasNextMediaItem(),
+                shuffle = player.shuffleModeEnabled,
+                repeatMode = player.repeatMode,
             )
         }
         _state.value = playback
@@ -186,8 +244,8 @@ class PlayerViewModel(
         private const val TAG = "Player"
         private const val TICK_MS = 500L
 
-        fun factory(app: Application, youTube: YouTube) = viewModelFactory {
-            initializer { PlayerViewModel(app, youTube) }
+        fun factory(app: Application, youTube: YouTube, repository: Repository) = viewModelFactory {
+            initializer { PlayerViewModel(app, youTube, repository) }
         }
     }
 }

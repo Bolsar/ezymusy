@@ -1,6 +1,8 @@
 package com.ezymusy.app.core.data
 
 import android.content.Context
+import android.util.Log
+import androidx.room.AutoMigration
 import androidx.room.Dao
 import androidx.room.Database
 import androidx.room.Entity
@@ -12,17 +14,25 @@ import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.Transaction
+import com.ezymusy.app.core.youtube.Playlist
 import com.ezymusy.app.core.youtube.Track
 import com.ezymusy.app.core.youtube.YouTube
 import com.ezymusy.app.core.youtube.YouTubeLink
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.withContext
 
-enum class LinkType { VIDEO, PLAYLIST }
+enum class LinkType { VIDEO, PLAYLIST, MIX }
 
-/** One pasted or shared link. [sourceId] is the videoId or playlistId, so the same link is stored once. */
+/**
+ * One pasted or shared link. [sourceId] is the videoId or playlistId, so the same link is stored once.
+ * A MIX has no stored tracks; its pages are fetched live from [sourceId] and [seedVideoId].
+ */
 @Entity(tableName = "links", indices = [Index(value = ["sourceId"], unique = true)])
 data class LinkEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -33,6 +43,7 @@ data class LinkEntity(
     val includeInShuffle: Boolean = true,
     val lastSyncedAt: Long,
     val addedAt: Long,
+    val seedVideoId: String? = null,
 )
 
 @Entity(
@@ -56,7 +67,7 @@ data class TrackEntity(
     fun toTrack() = Track(videoId, title, artist, artworkUrl, durationSec)
 }
 
-data class LinkDetail(val title: String, val tracks: List<TrackEntity>)
+data class LinkDetail(val link: LinkEntity, val tracks: List<TrackEntity>)
 
 data class LinkRow(val id: Long, val type: LinkType, val title: String, val trackCount: Int)
 
@@ -71,8 +82,20 @@ abstract class LibraryDao {
     @Query("SELECT * FROM tracks WHERE linkId = :linkId ORDER BY position")
     abstract fun tracksFlow(linkId: Long): Flow<List<TrackEntity>>
 
-    @Query("SELECT title FROM links WHERE id = :linkId")
-    abstract fun title(linkId: Long): Flow<String?>
+    @Query("SELECT * FROM links WHERE id = :linkId")
+    abstract fun link(linkId: Long): Flow<LinkEntity?>
+
+    @Query("UPDATE links SET includeInShuffle = :include WHERE id = :linkId")
+    abstract suspend fun setIncludeInShuffle(linkId: Long, include: Boolean)
+
+    @Query(
+        """SELECT tracks.* FROM tracks JOIN links ON links.id = tracks.linkId
+        WHERE links.includeInShuffle AND NOT tracks.unavailable""",
+    )
+    abstract suspend fun shuffleTracks(): List<TrackEntity>
+
+    @Query("SELECT * FROM links WHERE type = 'MIX' AND includeInShuffle")
+    abstract suspend fun shuffleMixes(): List<LinkEntity>
 
     @Query("DELETE FROM links WHERE id = :linkId")
     abstract suspend fun delete(linkId: Long)
@@ -106,7 +129,11 @@ abstract class LibraryDao {
     }
 }
 
-@Database(entities = [LinkEntity::class, TrackEntity::class], version = 1)
+@Database(
+    entities = [LinkEntity::class, TrackEntity::class],
+    version = 2,
+    autoMigrations = [AutoMigration(from = 1, to = 2)],
+)
 abstract class AppDb : RoomDatabase() {
     abstract fun library(): LibraryDao
 
@@ -115,51 +142,71 @@ abstract class AppDb : RoomDatabase() {
     }
 }
 
+private const val TAG = "Repository"
+
 /** The user's saved links and their tracks. Network fetches happen here, off the main thread. */
 class Repository(private val dao: LibraryDao, private val youTube: YouTube) {
 
     val links: Flow<List<LinkRow>> = dao.links()
 
     /** Title and tracks of one link; null once the link is deleted. */
-    fun detail(linkId: Long): Flow<LinkDetail?> = combine(dao.title(linkId), dao.tracksFlow(linkId)) { title, tracks ->
-        title?.let { LinkDetail(it, tracks) }
+    fun detail(linkId: Long): Flow<LinkDetail?> = combine(dao.link(linkId), dao.tracksFlow(linkId)) { link, tracks ->
+        link?.let { LinkDetail(it, tracks) }
     }
 
     suspend fun delete(linkId: Long) = dao.delete(linkId)
+
+    suspend fun setIncludeInShuffle(linkId: Long, include: Boolean) = dao.setIncludeInShuffle(linkId, include)
+
+    /** Every playable track of the links in Shuffle all, plus the first page of each included mix. Unordered. */
+    suspend fun shuffleAll(): List<Track> = coroutineScope {
+        val mixes = dao.shuffleMixes().map { mix ->
+            async(Dispatchers.IO) {
+                try {
+                    youTube.mix(mix.sourceId, mix.seedVideoId).tracks
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
+                    // One unreachable mix shouldn't cancel the whole shuffle.
+                    Log.w(TAG, "Could not load mix ${mix.sourceId}", e)
+                    emptyList()
+                }
+            }
+        }
+        dao.shuffleTracks().map(TrackEntity::toTrack) + mixes.awaitAll().flatten()
+    }
 
     /** Stores [link] with its tracks and returns its id. A link that is already saved is not fetched again. */
     suspend fun add(link: YouTubeLink): Long {
         val sourceId = when (link) {
             is YouTubeLink.Video -> link.videoId
             is YouTubeLink.Playlist -> link.playlistId
-            is YouTubeLink.Mix -> throw IllegalArgumentException("Mixes are not stored")
+            is YouTubeLink.Mix -> link.playlistId
         }
         dao.linkId(sourceId)?.let { return it }
 
-        val now = System.currentTimeMillis()
-        val (entity, tracks) = withContext(Dispatchers.IO) {
-            if (link is YouTubeLink.Playlist) {
-                val playlist = youTube.playlist(link.playlistId)
-                LinkEntity(
-                    sourceId = sourceId,
-                    type = LinkType.PLAYLIST,
-                    title = playlist.title,
-                    artworkUrl = playlist.artworkUrl,
-                    lastSyncedAt = now,
-                    addedAt = now,
-                ) to playlist.tracks
-            } else {
-                val track = youTube.track(sourceId)
-                LinkEntity(
-                    sourceId = sourceId,
-                    type = LinkType.VIDEO,
-                    title = track.title,
-                    artworkUrl = track.artworkUrl,
-                    lastSyncedAt = now,
-                    addedAt = now,
-                ) to listOf(track)
+        val (type, playlist) = withContext(Dispatchers.IO) {
+            when (link) {
+                // A mix keeps only its name and artwork; tracks are fetched live on every play.
+                is YouTubeLink.Mix ->
+                    LinkType.MIX to youTube.mix(link.playlistId, link.seedVideoId).copy(tracks = emptyList())
+                is YouTubeLink.Playlist -> LinkType.PLAYLIST to youTube.playlist(link.playlistId)
+                is YouTubeLink.Video -> {
+                    val track = youTube.track(sourceId)
+                    LinkType.VIDEO to Playlist(track.title, track.artworkUrl, listOf(track))
+                }
             }
         }
-        return dao.insert(entity, tracks)
+        val now = System.currentTimeMillis()
+        val entity = LinkEntity(
+            sourceId = sourceId,
+            type = type,
+            title = playlist.title,
+            artworkUrl = playlist.artworkUrl,
+            lastSyncedAt = now,
+            addedAt = now,
+            seedVideoId = (link as? YouTubeLink.Mix)?.seedVideoId,
+        )
+        return dao.insert(entity, playlist.tracks)
     }
 }

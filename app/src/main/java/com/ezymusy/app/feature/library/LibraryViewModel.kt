@@ -43,13 +43,8 @@ class LibraryViewModel(private val repository: Repository) : ViewModel() {
     fun add(text: String) {
         if (_add.value.adding) return
         val link = YouTubeLink.parse(text)
-        val error = when (link) {
-            null -> R.string.error_not_youtube
-            is YouTubeLink.Mix -> R.string.error_mix_not_yet
-            else -> null
-        }
-        if (link == null || error != null) {
-            _add.update { it.copy(input = text, error = error) }
+        if (link == null) {
+            _add.update { it.copy(input = text, error = R.string.error_not_youtube) }
             return
         }
         _add.update { it.copy(input = text, error = null, adding = true) }
@@ -71,6 +66,10 @@ class LibraryViewModel(private val repository: Repository) : ViewModel() {
     }
 
     fun detail(linkId: Long): Flow<LinkDetail?> = repository.detail(linkId)
+
+    fun setIncludeInShuffle(linkId: Long, include: Boolean) {
+        viewModelScope.launch { repository.setIncludeInShuffle(linkId, include) }
+    }
 
     fun delete(linkId: Long) {
         viewModelScope.launch { repository.delete(linkId) }

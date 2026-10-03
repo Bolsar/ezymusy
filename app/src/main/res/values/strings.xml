@@ -1,17 +1,17 @@
 <resources>
     <string name="app_name">Ezymusy</string>
     <string name="link_label">YouTube link</string>
-    <string name="link_placeholder">Paste a video or playlist link</string>
+    <string name="link_placeholder">Paste a video, playlist or mix link</string>
     <string name="add_link">Add link</string>
     <string name="adding">Adding to your library…</string>
     <string name="error_not_youtube">That isn\'t a YouTube link. Copy the link from YouTube\'s Share button and paste it here.</string>
-    <string name="error_mix_not_yet">Mixes aren\'t supported yet. Paste a video or playlist link.</string>
     <string name="error_add_failed">Couldn\'t add that link. Check your connection, then try again.</string>
     <string name="error_load_failed">Couldn\'t load audio. Check your connection, then try again.</string>
     <string name="retry">Try again</string>
     <string name="empty_title">Your library is empty</string>
-    <string name="empty_body">Paste a YouTube video or playlist link above, or share one from the YouTube app. Audio keeps playing when you lock the screen.</string>
+    <string name="empty_body">Paste a YouTube video, playlist or mix link above, or share one from the YouTube app. Audio keeps playing when you lock the screen.</string>
     <string name="link_video">Video</string>
+    <string name="link_mix">Mix</string>
     <plurals name="link_playlist">
         <item quantity="one">Playlist · %d track</item>
         <item quantity="other">Playlist · %d tracks</item>
@@ -28,4 +28,13 @@
     <string name="delete_link_body">Its tracks leave your library. You can add the link again any time.</string>
     <string name="delete">Remove</string>
     <string name="cancel">Cancel</string>
+    <string name="shuffle_all">Shuffle all</string>
+    <string name="shuffle_on">Shuffle on</string>
+    <string name="shuffle_off">Shuffle off</string>
+    <string name="repeat_off">Repeat off</string>
+    <string name="repeat_all">Repeat all</string>
+    <string name="repeat_one">Repeat one</string>
+    <string name="include_in_shuffle">Include in Shuffle all</string>
+    <string name="play_mix">Play mix</string>
+    <string name="mix_body">A mix never ends. Its tracks load as you listen.</string>
 </resources>
