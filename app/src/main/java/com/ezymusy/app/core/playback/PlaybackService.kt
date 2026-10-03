@@ -8,6 +8,7 @@ import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.ResolvingDataSource
@@ -17,6 +18,7 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import com.ezymusy.app.App
+import com.ezymusy.app.AppContainer
 import com.ezymusy.app.core.youtube.Track
 import com.ezymusy.app.core.youtube.YouTube
 import kotlinx.coroutines.CancellationException
@@ -25,11 +27,18 @@ import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.schabi.newpipe.extractor.exceptions.ContentNotAvailableException
+import org.schabi.newpipe.extractor.exceptions.ExtractionException
+import org.schabi.newpipe.extractor.exceptions.ReCaptchaException
+import org.schabi.newpipe.extractor.exceptions.SignInConfirmNotBotException
 
 private const val SCHEME = "yt"
 private const val EXTRA_MIX = "mix"
 private const val EXTRA_SEED = "seed"
 private const val TAG = "Playback"
+
+// Consecutive broken tracks skipped before giving up: past this, the extractor itself is likely broken.
+private const val MAX_STRIKES = 3
 
 // Fetch the next mix page while this many items are still ahead, so Next never runs dry.
 private const val MIX_REFILL_AHEAD = 3
@@ -42,6 +51,7 @@ class PlaybackService : MediaSessionService() {
     private var session: MediaSession? = null
     private val scope = MainScope()
     private var refilling = false
+    private var strikes = 0
 
     override fun onCreate() {
         super.onCreate()
@@ -72,8 +82,45 @@ class PlaybackService : MediaSessionService() {
                     refillMix(player, youTube)
                 }
             }
+
+            override fun onPlaybackStateChanged(state: Int) {
+                if (state == Player.STATE_READY) resetStrikes(container)
+            }
+
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                // A new queue starts with a clean count. Not on seeks: skipping a broken track is one.
+                if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED) resetStrikes(container)
+            }
+
+            override fun onPlayerError(error: PlaybackException) = skipBroken(player, error, container)
         })
         session = MediaSession.Builder(this, player).build()
+    }
+
+    /** Marks a track YouTube won't serve and moves on, until [MAX_STRIKES] in a row suggest the app is outdated. */
+    private fun skipBroken(player: Player, error: PlaybackException, container: AppContainer) {
+        val videoId = player.currentMediaItem?.mediaId ?: return
+        // The cached stream URL may be the cause (403, expired): never reuse it.
+        container.youTube.invalidate(videoId)
+        val failure = classify(error)
+        // Offline or rate limited: every track would fail the same way. Leave it to Retry.
+        if (failure == Failure.NETWORK) return
+        if (++strikes >= MAX_STRIKES) {
+            // This many in a row points at the extractor, not the tracks: don't mark this one.
+            container.extractorOutdated.value = true
+            return
+        }
+        if (failure == Failure.UNAVAILABLE) scope.launch { container.repository.markUnavailable(videoId) }
+        if (player.hasNextMediaItem()) {
+            Log.i(TAG, "Skipping broken track $videoId")
+            player.seekToNextMediaItem()
+            player.prepare()
+        }
+    }
+
+    private fun resetStrikes(container: AppContainer) {
+        strikes = 0
+        container.extractorOutdated.value = false
     }
 
     /** Appends the next page of a live mix when the queue is about to run out. */
@@ -123,6 +170,21 @@ class PlaybackService : MediaSessionService() {
         }
         session = null
         super.onDestroy()
+    }
+}
+
+internal enum class Failure { UNAVAILABLE, BROKEN, NETWORK }
+
+/** Why a track failed to load, from the exception chain ExoPlayer reports. */
+internal fun classify(error: Throwable): Failure {
+    val chain = generateSequence(error) { it.cause }.toList()
+    return when {
+        // YouTube asked for a captcha or sign-in: rate limiting, not this track's fault.
+        chain.any { it is ReCaptchaException || it is SignInConfirmNotBotException } -> Failure.NETWORK
+        // Private, deleted, age or region restricted, paid.
+        chain.any { it is ContentNotAvailableException } -> Failure.UNAVAILABLE
+        chain.any { it is ExtractionException || it is YouTube.ExtractionException } -> Failure.BROKEN
+        else -> Failure.NETWORK
     }
 }
 

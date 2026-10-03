@@ -33,6 +33,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.res.stringResource
@@ -103,7 +104,9 @@ fun LinkDetailScreen(
                 }
             }
             val link = detail?.link
-            val tracks = remember(detail) { detail?.tracks?.map(TrackEntity::toTrack).orEmpty() }
+            val rows = detail?.tracks.orEmpty()
+            // Unavailable tracks stay listed (greyed) but never enter the queue.
+            val tracks = remember(detail) { rows.filterNot(TrackEntity::unavailable).map(TrackEntity::toTrack) }
             if (link?.type == LinkType.MIX) {
                 Text(
                     stringResource(R.string.mix_body),
@@ -125,8 +128,15 @@ fun LinkDetailScreen(
             }
             if (link != null) IncludeInShuffle(link.includeInShuffle, onIncludeInShuffle)
             LazyColumn(Modifier.weight(1f)) {
-                itemsIndexed(tracks, key = { i, _ -> i }) { i, track ->
-                    TrackRow(track, isCurrent = track.videoId == currentVideoId, onClick = { onPlay(tracks, i) })
+                itemsIndexed(rows, key = { i, _ -> i }) { i, row ->
+                    val track = row.toTrack()
+                    TrackRow(
+                        track,
+                        isCurrent = track.videoId == currentVideoId,
+                        // Position in the queue, which skips the unavailable rows above this one.
+                        onClick = { onPlay(tracks, rows.take(i).count { !it.unavailable }) }
+                            .takeUnless { row.unavailable },
+                    )
                 }
             }
             player()
@@ -170,7 +180,7 @@ private fun IncludeInShuffle(checked: Boolean, onCheckedChange: (Boolean) -> Uni
 }
 
 @Composable
-private fun TrackRow(track: Track, isCurrent: Boolean, onClick: () -> Unit) {
+private fun TrackRow(track: Track, isCurrent: Boolean, onClick: (() -> Unit)?) {
     val colors = MaterialTheme.colorScheme
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -179,7 +189,7 @@ private fun TrackRow(track: Track, isCurrent: Boolean, onClick: () -> Unit) {
             .fillMaxWidth()
             .heightIn(min = Dimens.TouchTarget)
             .background(if (isCurrent) colors.surfaceContainerHigh else colors.background)
-            .clickable(onClick = onClick)
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier.alpha(Dimens.DisabledAlpha))
             .padding(horizontal = Dimens.SpaceS, vertical = Dimens.SpaceS)
             .testTag("track_row"),
     ) {
@@ -199,7 +209,13 @@ private fun TrackRow(track: Track, isCurrent: Boolean, onClick: () -> Unit) {
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        if (track.durationSec > 0) {
+        if (onClick == null) {
+            Text(
+                stringResource(R.string.track_unavailable),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        } else if (track.durationSec > 0) {
             Text(
                 DateUtils.formatElapsedTime(track.durationSec),
                 style = MaterialTheme.typography.labelMedium,
