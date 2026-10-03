@@ -2,30 +2,19 @@ package com.ezymusy.app.feature.player
 
 import android.text.format.DateUtils
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
-import androidx.compose.material3.Button
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -33,15 +22,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -50,108 +35,33 @@ import com.ezymusy.app.core.designsystem.Dimens
 import com.ezymusy.app.core.designsystem.EzymusyTheme
 import java.util.concurrent.TimeUnit
 
+/** Inline player controls. Shows nothing until something is queued. */
 @Composable
-fun PlayerRoute(viewModel: PlayerViewModel, modifier: Modifier = Modifier) {
-    val state by viewModel.state.collectAsStateWithLifecycle()
-    PlayerScreen(
-        state = state,
-        onInputChange = viewModel::onInputChange,
-        onPlayInput = viewModel::playInput,
+fun PlayerSection(viewModel: PlayerViewModel, modifier: Modifier = Modifier) {
+    val playback by viewModel.state.collectAsStateWithLifecycle()
+    PlayerSection(
+        playback = playback,
         onRetry = viewModel::retry,
-        onTogglePlay = { viewModel.togglePlay() },
-        onSeek = { viewModel.seekTo(it) },
+        onTogglePlay = viewModel::togglePlay,
+        onSeek = viewModel::seekTo,
         modifier = modifier,
     )
 }
 
 @Composable
-fun PlayerScreen(
-    state: PlayerUiState,
-    onInputChange: (String) -> Unit,
-    onPlayInput: () -> Unit,
+fun PlayerSection(
+    playback: Playback,
     onRetry: () -> Unit,
     onTogglePlay: () -> Unit,
     onSeek: (Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Surface(modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-        Column(
-            modifier = Modifier
-                .safeDrawingPadding()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = Dimens.SpaceL, vertical = Dimens.SpaceXl),
-            verticalArrangement = Arrangement.spacedBy(Dimens.SpaceL),
-        ) {
-            Text(stringResource(R.string.app_name), style = MaterialTheme.typography.titleLarge)
-            LinkInput(state, onInputChange, onPlayInput)
-            Spacer(Modifier.height(Dimens.SpaceL))
-            when (val playback = state.playback) {
-                Playback.Idle -> EmptyState()
-                Playback.Loading -> LoadingState()
-                Playback.Failed -> FailedState(onRetry)
-                is Playback.Ready -> NowPlaying(playback, onTogglePlay, onSeek)
-            }
+    Box(modifier) {
+        when (playback) {
+            Playback.Idle -> Unit
+            Playback.Failed -> FailedState(onRetry)
+            is Playback.Ready -> NowPlaying(playback, onTogglePlay, onSeek)
         }
-    }
-}
-
-@Composable
-private fun LinkInput(state: PlayerUiState, onInputChange: (String) -> Unit, onPlayInput: () -> Unit) {
-    val focusManager = LocalFocusManager.current
-    // Close the keyboard so the player controls are visible once audio starts.
-    val submit = {
-        focusManager.clearFocus()
-        onPlayInput()
-    }
-    Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceS)) {
-        OutlinedTextField(
-            value = state.input,
-            onValueChange = onInputChange,
-            label = { Text(stringResource(R.string.link_label)) },
-            placeholder = { Text(stringResource(R.string.link_placeholder)) },
-            singleLine = true,
-            isError = state.inputError != null,
-            supportingText = state.inputError?.let { { Text(stringResource(it)) } },
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Go),
-            keyboardActions = KeyboardActions(onGo = { submit() }),
-            modifier = Modifier
-                .fillMaxWidth()
-                .testTag("link_input"),
-        )
-        Button(
-            onClick = submit,
-            enabled = state.input.isNotBlank(),
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(Dimens.TouchTarget)
-                .testTag("play_link"),
-        ) {
-            Text(stringResource(R.string.play_link))
-        }
-    }
-}
-
-@Composable
-private fun EmptyState() {
-    Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceXs)) {
-        Text(stringResource(R.string.empty_title), style = MaterialTheme.typography.titleMedium)
-        Text(
-            stringResource(R.string.empty_body),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
-}
-
-@Composable
-private fun LoadingState() {
-    Column(verticalArrangement = Arrangement.spacedBy(Dimens.SpaceS)) {
-        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-        Text(
-            stringResource(R.string.loading),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
     }
 }
 
@@ -234,13 +144,8 @@ private fun TimeLabel(ms: Long) {
 @Composable
 private fun NowPlayingPreview() {
     EzymusyTheme {
-        PlayerScreen(
-            state = PlayerUiState(
-                input = "https://youtu.be/dQw4w9WgXcQ",
-                playback = Playback.Ready("Never Gonna Give You Up", "Rick Astley", true, 61_000, 213_000),
-            ),
-            onInputChange = {},
-            onPlayInput = {},
+        PlayerSection(
+            playback = Playback.Ready("Never Gonna Give You Up", "Rick Astley", true, 61_000, 213_000),
             onRetry = {},
             onTogglePlay = {},
             onSeek = {},

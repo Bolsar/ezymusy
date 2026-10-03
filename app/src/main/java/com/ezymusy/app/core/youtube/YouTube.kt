@@ -3,17 +3,21 @@ package com.ezymusy.app.core.youtube
 import androidx.core.net.toUri
 import okhttp3.OkHttpClient
 import okhttp3.RequestBody.Companion.toRequestBody
+import org.schabi.newpipe.extractor.Image
 import org.schabi.newpipe.extractor.MediaFormat
 import org.schabi.newpipe.extractor.NewPipe
+import org.schabi.newpipe.extractor.Page
 import org.schabi.newpipe.extractor.ServiceList
 import org.schabi.newpipe.extractor.downloader.Downloader
 import org.schabi.newpipe.extractor.downloader.Request
 import org.schabi.newpipe.extractor.downloader.Response
 import org.schabi.newpipe.extractor.exceptions.ReCaptchaException
+import org.schabi.newpipe.extractor.playlist.PlaylistInfo
 import org.schabi.newpipe.extractor.stream.AudioStream
 import org.schabi.newpipe.extractor.stream.AudioTrackType
 import org.schabi.newpipe.extractor.stream.DeliveryMethod
 import org.schabi.newpipe.extractor.stream.StreamInfo
+import org.schabi.newpipe.extractor.stream.StreamInfoItem
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
@@ -24,6 +28,8 @@ data class Track(
     val artworkUrl: String?,
     val durationSec: Long,
 )
+
+data class Playlist(val title: String, val artworkUrl: String?, val tracks: List<Track>)
 
 /**
  * The only place that talks to NewPipeExtractor. Every call blocks on network:
@@ -44,6 +50,20 @@ class YouTube(private val client: OkHttpClient) {
 
     fun audioUrl(videoId: String): String = resolve(videoId).audioUrl
 
+    /** Every entry of a playlist, following pagination to the end. */
+    fun playlist(playlistId: String): Playlist {
+        val url = "https://www.youtube.com/playlist?list=$playlistId"
+        val info = PlaylistInfo.getInfo(ServiceList.YouTube, url)
+        val items = info.relatedItems.toMutableList()
+        var page = info.nextPage
+        while (Page.isValid(page)) {
+            val more = PlaylistInfo.getMoreItems(ServiceList.YouTube, url, page)
+            items += more.items
+            page = more.nextPage
+        }
+        return Playlist(info.name, info.thumbnails.largest(), items.map { it.toTrack() })
+    }
+
     /** Drop a cached stream URL, for example after the server answered 403. */
     fun invalidate(videoId: String) {
         cache.remove(videoId)
@@ -59,11 +79,21 @@ class YouTube(private val client: OkHttpClient) {
             videoId = videoId,
             title = info.name,
             artist = info.uploaderName.orEmpty(),
-            artworkUrl = info.thumbnails.maxByOrNull { it.height }?.url,
+            artworkUrl = info.thumbnails.largest(),
             durationSec = info.duration,
         )
         return Resolved(track, stream.content, expiresAt(stream.content)).also { cache[videoId] = it }
     }
+
+    private fun StreamInfoItem.toTrack() = Track(
+        videoId = ServiceList.YouTube.streamLHFactory.getId(url),
+        title = name,
+        artist = uploaderName.orEmpty(),
+        artworkUrl = thumbnails.largest(),
+        durationSec = duration,
+    )
+
+    private fun List<Image>.largest() = maxByOrNull { it.height }?.url
 
     class ExtractionException(message: String) : Exception(message)
 
