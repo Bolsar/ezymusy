@@ -19,4 +19,13 @@
     <string name="play">Play</string>
     <string name="pause">Pause</string>
     <string name="seek">Playback position</string>
+    <string name="next">Next track</string>
+    <string name="previous">Previous track</string>
+    <string name="back">Back</string>
+    <string name="play_all">Play all</string>
+    <string name="delete_link">Remove from library</string>
+    <string name="delete_link_title">Remove this link?</string>
+    <string name="delete_link_body">Its tracks leave your library. You can add the link again any time.</string>
+    <string name="delete">Remove</string>
+    <string name="cancel">Cancel</string>
 </resources>

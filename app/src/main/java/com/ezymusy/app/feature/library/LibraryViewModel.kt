@@ -7,11 +7,12 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.ezymusy.app.R
+import com.ezymusy.app.core.data.LinkDetail
 import com.ezymusy.app.core.data.LinkRow
 import com.ezymusy.app.core.data.Repository
-import com.ezymusy.app.core.youtube.Track
 import com.ezymusy.app.core.youtube.YouTubeLink
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -69,9 +70,10 @@ class LibraryViewModel(private val repository: Repository) : ViewModel() {
         }
     }
 
-    /** Loads a link's tracks for [onLoaded] (the player queue). */
-    fun tracks(linkId: Long, onLoaded: (List<Track>) -> Unit) {
-        viewModelScope.launch { onLoaded(repository.tracks(linkId)) }
+    fun detail(linkId: Long): Flow<LinkDetail?> = repository.detail(linkId)
+
+    fun delete(linkId: Long) {
+        viewModelScope.launch { repository.delete(linkId) }
     }
 
     companion object {

@@ -1,0 +1,56 @@
+# M2: add a playlist, open it, play a track, drive the queue, remove the link.
+appId: com.ezymusy.app
+---
+- launchApp:
+    clearState: true
+- assertVisible: "Your library is empty"
+- tapOn:
+    id: "link_input"
+- inputText: "https://www.youtube.com/playlist?list=PLFgquLnL59alCl_2TQvOiD5Vgm1hCaGSI"
+- tapOn:
+    id: "add_link"
+- extendedWaitUntil:
+    visible: "Playlist · .* tracks"
+    timeout: 60000
+# Library survives a restart.
+- stopApp
+- launchApp
+- tapOn:
+    id: "link_row"
+- assertVisible:
+    id: "play_all"
+- tapOn:
+    id: "track_row"
+    index: 1
+- extendedWaitUntil:
+    visible:
+      id: "mini_title"
+    timeout: 30000
+- tapOn:
+    id: "mini_player"
+- extendedWaitUntil:
+    visible: "Pause"
+    timeout: 20000
+- copyTextFrom:
+    id: "now_title"
+- evalScript: ${output.first = maestro.copiedText}
+- tapOn:
+    id: "next"
+- extendedWaitUntil:
+    notVisible: ${output.first}
+    timeout: 10000
+- extendedWaitUntil:
+    visible: "Pause"
+    timeout: 20000
+- tapOn:
+    id: "back"
+- tapOn:
+    id: "delete_link"
+# Dialogs are their own window, outside testTagsAsResourceId.
+- tapOn: "Remove"
+- extendedWaitUntil:
+    visible: "Your library is empty"
+    timeout: 5000
+# Queue keeps playing after its link is removed.
+- assertVisible:
+    id: "mini_player"
