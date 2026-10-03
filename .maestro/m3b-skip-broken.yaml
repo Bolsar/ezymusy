@@ -4,8 +4,7 @@
 appId: com.ezymusy.app
 ---
 - launchApp
-- tapOn:
-    id: "link_row"
+- tapOn: "Playlist · .*"
 - tapOn:
     id: "track_row"
     index: 0

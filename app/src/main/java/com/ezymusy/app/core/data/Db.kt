@@ -112,22 +112,21 @@ abstract class LibraryDao {
     @Query("SELECT * FROM links WHERE type = 'PLAYLIST' AND lastSyncedAt < :before")
     abstract suspend fun playlistsSyncedBefore(before: Long): List<LinkEntity>
 
-    @Query("SELECT videoId FROM tracks WHERE linkId = :linkId AND unavailable")
-    protected abstract suspend fun unavailableIds(linkId: Long): List<String>
-
     @Query("DELETE FROM tracks WHERE linkId = :linkId")
     protected abstract suspend fun deleteTracks(linkId: Long)
 
     @Query("UPDATE links SET title = :title, artworkUrl = :artworkUrl, lastSyncedAt = :syncedAt WHERE id = :linkId")
     protected abstract suspend fun updateLink(linkId: Long, title: String, artworkUrl: String?, syncedAt: Long)
 
-    /** Replaces a playlist's tracks with a fresh fetch, keeping tracks already known to be unavailable marked. */
+    /**
+     * Replaces a playlist's tracks with a fresh fetch. Unavailable marks are dropped on purpose: YouTube also
+     * reports rate limits and region locks as "not available", so a mark only lasts until the next sync.
+     */
     @Transaction
     open suspend fun replaceTracks(linkId: Long, playlist: Playlist, syncedAt: Long) {
-        val unavailable = unavailableIds(linkId).toSet()
         deleteTracks(linkId)
         updateLink(linkId, playlist.title, playlist.artworkUrl, syncedAt)
-        insertTracks(linkId, playlist.tracks, unavailable)
+        insertTracks(linkId, playlist.tracks)
     }
 
     @Insert
@@ -139,11 +138,11 @@ abstract class LibraryDao {
     @Transaction
     open suspend fun insert(link: LinkEntity, tracks: List<Track>): Long {
         val id = insert(link)
-        insertTracks(id, tracks, emptySet())
+        insertTracks(id, tracks)
         return id
     }
 
-    private suspend fun insertTracks(linkId: Long, tracks: List<Track>, unavailable: Set<String>) {
+    private suspend fun insertTracks(linkId: Long, tracks: List<Track>) {
         insert(
             tracks.mapIndexed { i, t ->
                 TrackEntity(
@@ -154,7 +153,6 @@ abstract class LibraryDao {
                     artworkUrl = t.artworkUrl,
                     durationSec = t.durationSec,
                     position = i,
-                    unavailable = t.videoId in unavailable,
                 )
             },
         )

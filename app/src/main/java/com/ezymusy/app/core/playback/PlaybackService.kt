@@ -84,10 +84,12 @@ class PlaybackService : MediaSessionService() {
             }
 
             override fun onPlaybackStateChanged(state: Int) {
-                if (state == Player.STATE_READY) {
-                    strikes = 0
-                    container.extractorOutdated.value = false
-                }
+                if (state == Player.STATE_READY) resetStrikes(container)
+            }
+
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                // A new queue starts with a clean count. Not on seeks: skipping a broken track is one.
+                if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED) resetStrikes(container)
             }
 
             override fun onPlayerError(error: PlaybackException) = skipBroken(player, error, container)
@@ -100,21 +102,25 @@ class PlaybackService : MediaSessionService() {
         val videoId = player.currentMediaItem?.mediaId ?: return
         // The cached stream URL may be the cause (403, expired): never reuse it.
         container.youTube.invalidate(videoId)
-        when (classify(error)) {
-            // Offline or rate limited: every track would fail the same way. Leave it to Retry.
-            Failure.NETWORK -> return
-            Failure.UNAVAILABLE -> scope.launch { container.repository.markUnavailable(videoId) }
-            Failure.BROKEN -> Unit
-        }
+        val failure = classify(error)
+        // Offline or rate limited: every track would fail the same way. Leave it to Retry.
+        if (failure == Failure.NETWORK) return
         if (++strikes >= MAX_STRIKES) {
+            // This many in a row points at the extractor, not the tracks: don't mark this one.
             container.extractorOutdated.value = true
             return
         }
+        if (failure == Failure.UNAVAILABLE) scope.launch { container.repository.markUnavailable(videoId) }
         if (player.hasNextMediaItem()) {
             Log.i(TAG, "Skipping broken track $videoId")
             player.seekToNextMediaItem()
             player.prepare()
         }
+    }
+
+    private fun resetStrikes(container: AppContainer) {
+        strikes = 0
+        container.extractorOutdated.value = false
     }
 
     /** Appends the next page of a live mix when the queue is about to run out. */
