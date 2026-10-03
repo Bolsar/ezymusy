@@ -15,6 +15,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.common.util.Util
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
+import com.google.common.util.concurrent.ListenableFuture
 import com.ezymusy.app.core.playback.PlaybackService
 import com.ezymusy.app.core.playback.toMediaItem
 import com.ezymusy.app.core.youtube.Track
@@ -32,12 +33,15 @@ sealed interface Playback {
     data object Idle : Playback
     data object Failed : Playback
     data class Ready(
+        /** videoId of the current track, to highlight it in lists. */
+        val mediaId: String?,
         val title: String,
         val artist: String,
         /** True while playback is playing or about to (buffering): the button offers Pause. */
         val showPause: Boolean,
         val positionMs: Long,
         val durationMs: Long,
+        val hasNext: Boolean,
     ) : Playback
 }
 
@@ -49,11 +53,8 @@ class PlayerViewModel(
     private val _state = MutableStateFlow<Playback>(Playback.Idle)
     val state: StateFlow<Playback> = _state.asStateFlow()
 
-    private val controller = CompletableDeferred<MediaController>()
-    private val controllerFuture = MediaController.Builder(
-        app,
-        SessionToken(app, ComponentName(app, PlaybackService::class.java)),
-    ).buildAsync()
+    private var controller = CompletableDeferred<MediaController>()
+    private var controllerFuture: ListenableFuture<MediaController>? = null
     private var connected: MediaController? = null
 
     private var connectFailed = false
@@ -69,25 +70,35 @@ class PlayerViewModel(
     }
 
     init {
-        controllerFuture.addListener({
-            if (controllerFuture.isCancelled) return@addListener
-            try {
-                val c = controllerFuture.get()
-                c.addListener(listener)
-                connected = c
-                controller.complete(c)
-            } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
-                Log.w(TAG, "Could not connect to PlaybackService", e)
-                controller.completeExceptionally(e)
-                connectFailed = true
-            }
-            publish()
-        }, ContextCompat.getMainExecutor(app))
+        connect()
 
         // Resume position updates when the screen becomes visible again.
         viewModelScope.launch {
             _state.subscriptionCount.collect { if (it > 0) publish() }
         }
+    }
+
+    private fun connect() {
+        connectFailed = false
+        val deferred = CompletableDeferred<MediaController>().also { controller = it }
+        val future = MediaController.Builder(
+            app,
+            SessionToken(app, ComponentName(app, PlaybackService::class.java)),
+        ).buildAsync().also { controllerFuture = it }
+        future.addListener({
+            if (future.isCancelled) return@addListener
+            try {
+                val c = future.get()
+                c.addListener(listener)
+                connected = c
+                deferred.complete(c)
+            } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
+                Log.w(TAG, "Could not connect to PlaybackService", e)
+                deferred.completeExceptionally(e)
+                connectFailed = true
+            }
+            publish()
+        }, ContextCompat.getMainExecutor(app))
     }
 
     /** Replaces the queue with [tracks] and starts at [startIndex]. Stream URLs resolve as each item loads. */
@@ -105,7 +116,11 @@ class PlayerViewModel(
 
     /** Re-prepares the current item with a freshly resolved stream URL, at the same position. */
     fun retry() {
-        val player = connected ?: return
+        val player = connected ?: run {
+            // Never reached the service: try again, but only once the previous attempt has failed.
+            if (connectFailed) connect()
+            return
+        }
         player.currentMediaItem?.mediaId?.let(youTube::invalidate)
         player.prepare()
         player.play()
@@ -121,6 +136,15 @@ class PlayerViewModel(
         connected?.seekTo(positionMs)
     }
 
+    fun next() {
+        connected?.seekToNext()
+    }
+
+    fun previous() {
+        // Restarts the track after the first few seconds, like every music player.
+        connected?.seekToPrevious()
+    }
+
     @OptIn(UnstableApi::class)
     private fun publish() {
         val player = connected
@@ -128,11 +152,13 @@ class PlayerViewModel(
             connectFailed || player?.playerError != null -> Playback.Failed
             player == null || player.mediaItemCount == 0 -> Playback.Idle
             else -> Playback.Ready(
+                mediaId = player.currentMediaItem?.mediaId,
                 title = player.mediaMetadata.title?.toString().orEmpty(),
                 artist = player.mediaMetadata.artist?.toString().orEmpty(),
                 showPause = !Util.shouldShowPlayButton(player),
                 positionMs = player.currentPosition,
                 durationMs = player.duration.coerceAtLeast(0),
+                hasNext = player.hasNextMediaItem(),
             )
         }
         _state.value = playback
@@ -153,7 +179,7 @@ class PlayerViewModel(
 
     override fun onCleared() {
         connected?.removeListener(listener)
-        MediaController.releaseFuture(controllerFuture)
+        controllerFuture?.let(MediaController::releaseFuture)
     }
 
     companion object {

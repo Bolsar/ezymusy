@@ -17,6 +17,7 @@ import com.ezymusy.app.core.youtube.YouTube
 import com.ezymusy.app.core.youtube.YouTubeLink
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.withContext
 
 enum class LinkType { VIDEO, PLAYLIST }
@@ -55,6 +56,8 @@ data class TrackEntity(
     fun toTrack() = Track(videoId, title, artist, artworkUrl, durationSec)
 }
 
+data class LinkDetail(val title: String, val tracks: List<TrackEntity>)
+
 data class LinkRow(val id: Long, val type: LinkType, val title: String, val trackCount: Int)
 
 @Dao
@@ -66,7 +69,13 @@ abstract class LibraryDao {
     abstract fun links(): Flow<List<LinkRow>>
 
     @Query("SELECT * FROM tracks WHERE linkId = :linkId ORDER BY position")
-    abstract suspend fun tracks(linkId: Long): List<TrackEntity>
+    abstract fun tracksFlow(linkId: Long): Flow<List<TrackEntity>>
+
+    @Query("SELECT title FROM links WHERE id = :linkId")
+    abstract fun title(linkId: Long): Flow<String?>
+
+    @Query("DELETE FROM links WHERE id = :linkId")
+    abstract suspend fun delete(linkId: Long)
 
     @Query("SELECT id FROM links WHERE sourceId = :sourceId")
     abstract suspend fun linkId(sourceId: String): Long?
@@ -111,7 +120,12 @@ class Repository(private val dao: LibraryDao, private val youTube: YouTube) {
 
     val links: Flow<List<LinkRow>> = dao.links()
 
-    suspend fun tracks(linkId: Long): List<Track> = dao.tracks(linkId).map { it.toTrack() }
+    /** Title and tracks of one link; null once the link is deleted. */
+    fun detail(linkId: Long): Flow<LinkDetail?> = combine(dao.title(linkId), dao.tracksFlow(linkId)) { title, tracks ->
+        title?.let { LinkDetail(it, tracks) }
+    }
+
+    suspend fun delete(linkId: Long) = dao.delete(linkId)
 
     /** Stores [link] with its tracks and returns its id. A link that is already saved is not fetched again. */
     suspend fun add(link: YouTubeLink): Long {
