@@ -1,0 +1,27 @@
+# M2a: paste a playlist link, it is stored with its tracks, tapping it plays the queue.
+appId: com.ezymusy.app
+---
+- launchApp:
+    clearState: true
+- assertVisible: "Your library is empty"
+- tapOn:
+    id: "link_input"
+- inputText: "https://www.youtube.com/playlist?list=PLFgquLnL59alCl_2TQvOiD5Vgm1hCaGSI"
+- tapOn:
+    id: "add_link"
+- extendedWaitUntil:
+    visible: "Playlist · .* tracks"
+    timeout: 60000
+- tapOn:
+    id: "link_row"
+- extendedWaitUntil:
+    visible:
+      id: "now_title"
+    timeout: 30000
+- extendedWaitUntil:
+    visible: "Pause"
+    timeout: 20000
+# Library survives a restart.
+- stopApp
+- launchApp
+- assertVisible: "Playlist · .* tracks"

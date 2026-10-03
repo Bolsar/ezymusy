@@ -2,6 +2,8 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.detekt)
+    alias(libs.plugins.ksp)
+    alias(libs.plugins.room)
 }
 
 android {
@@ -32,6 +34,10 @@ android {
     }
 }
 
+room {
+    schemaDirectory("$projectDir/schemas")
+}
+
 detekt {
     buildUponDefaultConfig = true
     config.setFrom(rootProject.file("config/detekt.yml"))
@@ -55,6 +61,8 @@ dependencies {
     implementation(libs.media3.datasource.okhttp)
     implementation(libs.okhttp)
     implementation(libs.newpipe.extractor)
+    implementation(libs.room.runtime)
+    ksp(libs.room.compiler)
 
     testImplementation(libs.junit)
 
