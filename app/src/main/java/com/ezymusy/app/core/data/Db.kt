@@ -109,6 +109,10 @@ abstract class LibraryDao {
     @Query("UPDATE tracks SET unavailable = 1 WHERE videoId = :videoId")
     abstract suspend fun markUnavailable(videoId: String)
 
+    /** Single videos are never re-synced, so their marks are cleared on each launch instead. */
+    @Query("UPDATE tracks SET unavailable = 0 WHERE linkId IN (SELECT id FROM links WHERE type = 'VIDEO')")
+    abstract suspend fun clearVideoMarks()
+
     @Query("SELECT * FROM links WHERE type = 'PLAYLIST' AND lastSyncedAt < :before")
     abstract suspend fun playlistsSyncedBefore(before: Long): List<LinkEntity>
 
@@ -189,8 +193,12 @@ class Repository(private val dao: LibraryDao, private val youTube: YouTube) {
 
     suspend fun markUnavailable(videoId: String) = dao.markUnavailable(videoId)
 
-    /** Refetches playlists last synced over [SYNC_INTERVAL_MS] ago. One failing playlist doesn't stop the rest. */
+    /**
+     * Refetches playlists last synced over [SYNC_INTERVAL_MS] ago, which also clears their unavailable marks.
+     * One failing playlist doesn't stop the rest.
+     */
     suspend fun syncStale() {
+        dao.clearVideoMarks()
         val now = System.currentTimeMillis()
         for (link in dao.playlistsSyncedBefore(now - SYNC_INTERVAL_MS)) {
             try {
