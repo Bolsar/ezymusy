@@ -102,7 +102,6 @@ private const val MAX_BACKGROUND_LUMINANCE = 0.03
 private const val DARKEN_STEP = 0.2f
 private const val DARKEN_STEPS = 12
 private const val OPAQUE_BLACK = 0xFF000000.toInt()
-private const val OPAQUE_WHITE = 0xFFFFFFFF.toInt()
 
 /** Mean of [pixels] per channel; the cover's overall color. */
 @Suppress("MagicNumber")
@@ -113,13 +112,13 @@ internal fun averageColor(pixels: IntArray): Int {
 
 /**
  * A tint from the cover's [average] color, dark enough that text stays readable
- * wherever the tint is drawn at [SCRIM_ALPHA] over the blurred cover, even over pure white.
+ * wherever the tint is drawn at [SCRIM_ALPHA] over the blurred cover, up to its [brightest] grid cell.
  */
-internal fun tintFor(average: Int): Int {
+internal fun tintFor(average: Int, brightest: Int): Int {
     var tint = average or OPAQUE_BLACK
     repeat(DARKEN_STEPS) {
-        // Blur keeps local detail, so judge the brightest spot a cover can have, not its average.
-        if (luminance(blend(OPAQUE_WHITE, tint, SCRIM_ALPHA)) <= MAX_BACKGROUND_LUMINANCE) return tint
+        // A blurred pixel averages its neighbourhood, so it is never brighter than the brightest grid cell.
+        if (luminance(blend(brightest, tint, SCRIM_ALPHA)) <= MAX_BACKGROUND_LUMINANCE) return tint
         tint = blend(tint, OPAQUE_BLACK, DARKEN_STEP)
     }
     return OPAQUE_BLACK

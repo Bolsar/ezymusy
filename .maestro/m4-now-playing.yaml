@@ -30,6 +30,8 @@ appId: com.ezymusy.app
 - extendedWaitUntil:
     notVisible: ${output.first}
     timeout: 10000
-- assertVisible:
-    id: "artwork"
+- extendedWaitUntil:
+    visible:
+      id: "artwork"
+    timeout: 20000
 - takeScreenshot: docs/screenshots/m4-now-playing

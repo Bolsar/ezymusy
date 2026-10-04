@@ -224,6 +224,8 @@ class PlayerViewModel(
             return
         }
         player.currentMediaItem?.mediaId?.let(youTube::invalidate)
+        // Fetch the cover again too, in case it failed with the stream.
+        artworkUrl = null
         player.prepare()
         player.play()
     }
@@ -298,16 +300,13 @@ class PlayerViewModel(
                     val grid = bitmap.scale(AVERAGE_GRID, AVERAGE_GRID)
                     val pixels = IntArray(AVERAGE_GRID * AVERAGE_GRID)
                     grid.getPixels(pixels, 0, AVERAGE_GRID, 0, 0, AVERAGE_GRID, AVERAGE_GRID)
-                    Artwork(bitmap.asImageBitmap(), tintFor(averageColor(pixels)))
+                    Artwork(bitmap.asImageBitmap(), tintFor(averageColor(pixels), pixels.maxBy(::luminance)))
                 }
                 _artwork.value = loaded
-                // Try again on the next update, for example once the network is back.
-                if (loaded == null) artworkUrl = null
             } catch (e: CancellationException) {
                 throw e
             } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
-                // The placeholder stays; the cover is decoration.
-                artworkUrl = null
+                // The placeholder stays until Retry or the next track; the cover is decoration.
                 Log.w(TAG, "Could not load artwork", e)
             }
         }
