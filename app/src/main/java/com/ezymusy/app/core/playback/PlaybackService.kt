@@ -18,6 +18,8 @@ import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
+import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy.LoadErrorInfo
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import com.ezymusy.app.App
@@ -29,6 +31,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.schabi.newpipe.extractor.exceptions.ContentNotAvailableException
@@ -93,7 +96,15 @@ class PlaybackService : MediaSessionService() {
         }
 
         val player = ExoPlayer.Builder(this)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(dataSource))
+            .setMediaSourceFactory(
+                DefaultMediaSourceFactory(dataSource).setLoadErrorHandlingPolicy(
+                    object : DefaultLoadErrorHandlingPolicy() {
+                        // Retrying would reuse the same dead URL; fail fast so onPlayerError fetches a fresh one.
+                        override fun getRetryDelayMsFor(info: LoadErrorInfo) =
+                            if (isExpiredUrl(info.exception)) C.TIME_UNSET else super.getRetryDelayMsFor(info)
+                    },
+                ),
+            )
             .setAudioAttributes(
                 AudioAttributes.Builder()
                     .setUsage(C.USAGE_MEDIA)
@@ -146,10 +157,12 @@ class PlaybackService : MediaSessionService() {
                     Player.MEDIA_ITEM_TRANSITION_REASON_SEEK -> "next/prev"
                     else -> "transition"
                 }
-                pendingPerf = label to SystemClock.elapsedRealtime()
+                // Paused starts would count the user's idle time.
+                pendingPerf = if (player.playWhenReady) label to SystemClock.elapsedRealtime() else null
             }
 
             override fun onPlayerError(error: PlaybackException) {
+                pendingPerf = null
                 val videoId = player.currentMediaItem?.mediaId
                 if (videoId != null && videoId != recoveredId && isExpiredUrl(error)) {
                     // The stream URL expired or was revoked: fetch a fresh one and carry on where it stopped.
@@ -206,6 +219,8 @@ class PlaybackService : MediaSessionService() {
         resolveAhead = scope.launch(Dispatchers.IO) {
             // One at a time: two extra requests at most alongside the loader's own.
             for (id in ids) {
+                // Cancelling can't interrupt a blocking fetch, but it stops the next one.
+                if (!isActive) break
                 runCatching { youTube.audioUrl(id) }
                     .onFailure { Log.d(TAG, "Resolve-ahead failed for $id: $it") }
             }
