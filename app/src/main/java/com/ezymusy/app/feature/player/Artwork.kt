@@ -21,7 +21,8 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import com.ezymusy.app.core.designsystem.Dimens
 
-// Background over the blurred cover: at 0.85 even a white cover leaves onSurfaceVariant text at 4.5:1.
+// Background over the blurred cover: at 0.85 even a white cover leaves onSurfaceVariant text at 4.74:1.
+// Depends on background #0B0B0C and onSurfaceVariant #9A9AA0; 0.84 is the floor.
 private const val SCRIM_ALPHA = 0.85f
 
 /**
