@@ -36,6 +36,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -72,7 +73,7 @@ fun NowPlayingRoute(viewModel: PlayerViewModel, onBack: () -> Unit, modifier: Mo
 @Composable
 fun NowPlayingScreen(
     playback: Playback,
-    artwork: Artwork?,
+    artwork: ImageBitmap?,
     onBack: () -> Unit,
     onRetry: () -> Unit,
     onTogglePlay: () -> Unit,

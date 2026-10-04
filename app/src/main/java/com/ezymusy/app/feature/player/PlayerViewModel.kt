@@ -2,8 +2,8 @@ package com.ezymusy.app.feature.player
 
 import android.app.Application
 import android.content.ComponentName
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.core.graphics.scale
 import android.graphics.BitmapFactory
 import android.util.Log
 import androidx.annotation.OptIn
@@ -80,10 +80,10 @@ class PlayerViewModel(
     private val _state = MutableStateFlow<Playback>(Playback.Idle)
     val state: StateFlow<Playback> = _state.asStateFlow()
 
-    private val _artwork = MutableStateFlow<Artwork?>(null)
+    private val _artwork = MutableStateFlow<ImageBitmap?>(null)
 
     /** Null while loading, for tracks without a cover, or when it failed to load. */
-    val artwork: StateFlow<Artwork?> = _artwork.asStateFlow()
+    val artwork: StateFlow<ImageBitmap?> = _artwork.asStateFlow()
     private var artworkUrl: String? = null
     private var artworkJob: Job? = null
 
@@ -296,11 +296,7 @@ class PlayerViewModel(
                     val bitmap = http.newCall(Request(url.toHttpUrl())).execute().use {
                         if (it.isSuccessful) BitmapFactory.decodeStream(it.body.byteStream()) else null
                     } ?: return@withContext null
-                    // A small grid keeps the whole image in the average; bilinear 1x1 would sample the centre only.
-                    val grid = bitmap.scale(AVERAGE_GRID, AVERAGE_GRID)
-                    val pixels = IntArray(AVERAGE_GRID * AVERAGE_GRID)
-                    grid.getPixels(pixels, 0, AVERAGE_GRID, 0, 0, AVERAGE_GRID, AVERAGE_GRID)
-                    Artwork(bitmap.asImageBitmap(), tintFor(averageColor(pixels), pixels.maxBy(::luminance)))
+                    bitmap.asImageBitmap()
                 }
                 _artwork.value = loaded
             } catch (e: CancellationException) {
@@ -322,7 +318,6 @@ class PlayerViewModel(
     companion object {
         private const val TAG = "Player"
         private const val TICK_MS = 500L
-        private const val AVERAGE_GRID = 16
 
         fun factory(
             app: Application,
