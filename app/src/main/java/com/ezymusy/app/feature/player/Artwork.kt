@@ -1,6 +1,5 @@
 package com.ezymusy.app.feature.player
 
-import android.graphics.Bitmap
 import android.os.Build
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.Image
@@ -20,14 +19,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import com.ezymusy.app.core.designsystem.Dimens
 import kotlin.math.pow
 
 /** The current track's cover and the background tint taken from it. */
-class Artwork(val bitmap: Bitmap, val tint: Int)
+class Artwork(val image: ImageBitmap, val tint: Int)
 
 /**
  * The cover, blurred, under a tint taken from it. Blur needs Android 12; older versions get the tint alone,
@@ -42,7 +41,7 @@ internal fun ArtworkBackground(artwork: Artwork?) {
     Box(Modifier.fillMaxSize()) {
         if (artwork != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             Image(
-                bitmap = artwork.bitmap.asImageBitmap(),
+                bitmap = artwork.image,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
@@ -71,16 +70,20 @@ internal fun Cover(artwork: Artwork?, modifier: Modifier = Modifier) {
     val tile = modifier
         .aspectRatio(1f, matchHeightConstraintsFirst = true)
         .clip(shape)
-        .testTag("artwork")
     if (artwork != null) {
         Image(
-            bitmap = artwork.bitmap.asImageBitmap(),
+            bitmap = artwork.image,
             contentDescription = null,
             contentScale = ContentScale.Crop,
-            modifier = tile,
+            modifier = tile.testTag("artwork"),
         )
     } else {
-        Box(tile.background(MaterialTheme.colorScheme.surfaceContainer), contentAlignment = Alignment.Center) {
+        Box(
+            tile
+                .testTag("artwork_placeholder")
+                .background(MaterialTheme.colorScheme.surfaceContainer),
+            contentAlignment = Alignment.Center,
+        ) {
             Icon(
                 Icons.Rounded.MusicNote,
                 contentDescription = null,
@@ -99,15 +102,24 @@ private const val MAX_BACKGROUND_LUMINANCE = 0.03
 private const val DARKEN_STEP = 0.2f
 private const val DARKEN_STEPS = 12
 private const val OPAQUE_BLACK = 0xFF000000.toInt()
+private const val OPAQUE_WHITE = 0xFFFFFFFF.toInt()
+
+/** Mean of [pixels] per channel; the cover's overall color. */
+@Suppress("MagicNumber")
+internal fun averageColor(pixels: IntArray): Int {
+    fun channel(shift: Int) = (pixels.sumOf { it shr shift and 0xFF } / pixels.size) shl shift
+    return OPAQUE_BLACK or channel(16) or channel(8) or channel(0)
+}
 
 /**
  * A tint from the cover's [average] color, dark enough that text stays readable
- * when the tint is drawn at [SCRIM_ALPHA] over the blurred cover.
+ * wherever the tint is drawn at [SCRIM_ALPHA] over the blurred cover, even over pure white.
  */
 internal fun tintFor(average: Int): Int {
     var tint = average or OPAQUE_BLACK
     repeat(DARKEN_STEPS) {
-        if (luminance(blend(average, tint, SCRIM_ALPHA)) <= MAX_BACKGROUND_LUMINANCE) return tint
+        // Blur keeps local detail, so judge the brightest spot a cover can have, not its average.
+        if (luminance(blend(OPAQUE_WHITE, tint, SCRIM_ALPHA)) <= MAX_BACKGROUND_LUMINANCE) return tint
         tint = blend(tint, OPAQUE_BLACK, DARKEN_STEP)
     }
     return OPAQUE_BLACK

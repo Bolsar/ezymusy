@@ -2,7 +2,7 @@ package com.ezymusy.app.feature.player
 
 import android.app.Application
 import android.content.ComponentName
-import androidx.core.graphics.get
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.core.graphics.scale
 import android.graphics.BitmapFactory
 import android.util.Log
@@ -290,18 +290,24 @@ class PlayerViewModel(
         if (url == null) return
         artworkJob = viewModelScope.launch {
             try {
-                _artwork.value = withContext(Dispatchers.IO) {
+                val loaded = withContext(Dispatchers.IO) {
                     val bitmap = http.newCall(Request(url.toHttpUrl())).execute().use {
-                        BitmapFactory.decodeStream(it.body.byteStream())
+                        if (it.isSuccessful) BitmapFactory.decodeStream(it.body.byteStream()) else null
                     } ?: return@withContext null
-                    // Scaling to one pixel averages the whole image.
-                    val average = bitmap.scale(1, 1)[0, 0]
-                    Artwork(bitmap, tintFor(average))
+                    // A small grid keeps the whole image in the average; bilinear 1x1 would sample the centre only.
+                    val grid = bitmap.scale(AVERAGE_GRID, AVERAGE_GRID)
+                    val pixels = IntArray(AVERAGE_GRID * AVERAGE_GRID)
+                    grid.getPixels(pixels, 0, AVERAGE_GRID, 0, 0, AVERAGE_GRID, AVERAGE_GRID)
+                    Artwork(bitmap.asImageBitmap(), tintFor(averageColor(pixels)))
                 }
+                _artwork.value = loaded
+                // Try again on the next update, for example once the network is back.
+                if (loaded == null) artworkUrl = null
             } catch (e: CancellationException) {
                 throw e
             } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
                 // The placeholder stays; the cover is decoration.
+                artworkUrl = null
                 Log.w(TAG, "Could not load artwork", e)
             }
         }
@@ -317,6 +323,7 @@ class PlayerViewModel(
     companion object {
         private const val TAG = "Player"
         private const val TICK_MS = 500L
+        private const val AVERAGE_GRID = 16
 
         fun factory(
             app: Application,

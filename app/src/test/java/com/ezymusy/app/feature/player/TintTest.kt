@@ -1,5 +1,6 @@
 package com.ezymusy.app.feature.player
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -17,15 +18,18 @@ class TintTest {
     fun `secondary text stays readable over any cover`() {
         val covers = listOf(0xFFFFFFFF, 0xFFFF0000, 0xFF00FF00, 0xFFC6F432, 0xFF808080, 0xFF000000)
         for (cover in covers.map { it.toInt() }) {
-            val background = blend(cover, tintFor(cover), SCRIM_ALPHA)
-            val ratio = contrast(secondaryText, background)
-            assertTrue("cover ${Integer.toHexString(cover)}: $ratio", ratio >= 4.5)
+            // A bright patch survives the blur anywhere on the cover, whatever its average.
+            for (patch in listOf(cover, 0xFFFFFFFF.toInt())) {
+                val ratio = contrast(secondaryText, blend(patch, tintFor(cover), SCRIM_ALPHA))
+                val label = "cover ${Integer.toHexString(cover)} patch ${Integer.toHexString(patch)}: $ratio"
+                assertTrue(label, ratio >= 4.5)
+            }
         }
     }
 
     @Test
-    fun `dark covers keep their color`() {
-        val navy = 0xFF101830.toInt()
-        assertTrue(tintFor(navy) == navy)
+    fun `average weighs every pixel`() {
+        val halfWhite = IntArray(4) { if (it < 2) 0xFFFFFFFF.toInt() else 0xFF000000.toInt() }
+        assertEquals(0xFF7F7F7F.toInt(), averageColor(halfWhite))
     }
 }
