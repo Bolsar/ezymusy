@@ -6,6 +6,8 @@
     <string name="adding">Adding to your library…</string>
     <string name="error_not_youtube">That isn\'t a YouTube link. Copy the link from YouTube\'s Share button and paste it here.</string>
     <string name="error_add_failed">Couldn\'t add that link. Check your connection, then try again.</string>
+    <string name="error_add_unavailable">That link is private or no longer available on YouTube.</string>
+    <string name="error_add_unreadable">Couldn\'t read that link from YouTube. Update Ezymusy, then try again.</string>
     <string name="error_load_failed">Couldn\'t load audio. Check your connection, then try again.</string>
     <string name="error_extractor_outdated">Several tracks in a row wouldn\'t play. YouTube may have changed: update Ezymusy, then try again.</string>
     <string name="retry">Try again</string>

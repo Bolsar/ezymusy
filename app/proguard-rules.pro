@@ -9,3 +9,7 @@
 -dontwarn jdk.dynalink.**
 # "x minutes ago" parsers are loaded by class name per locale.
 -keep class org.schabi.newpipe.extractor.timeago.patterns.** { *; }
+# Playlist and mix paging builds protobuf-lite messages, which find their fields by name via reflection.
+-keepclassmembers class * extends com.google.protobuf.GeneratedMessageLite {
+    <fields>;
+}

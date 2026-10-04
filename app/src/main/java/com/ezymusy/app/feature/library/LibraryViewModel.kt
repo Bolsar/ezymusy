@@ -10,6 +10,8 @@ import com.ezymusy.app.R
 import com.ezymusy.app.core.data.LinkDetail
 import com.ezymusy.app.core.data.LinkRow
 import com.ezymusy.app.core.data.Repository
+import com.ezymusy.app.core.playback.Failure
+import com.ezymusy.app.core.playback.classify
 import com.ezymusy.app.core.youtube.YouTubeLink
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
@@ -20,6 +22,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import org.schabi.newpipe.extractor.exceptions.ReCaptchaException
+import org.schabi.newpipe.extractor.exceptions.SignInConfirmNotBotException
+import java.io.IOException
 
 data class AddLinkState(
     val input: String = "",
@@ -54,19 +59,17 @@ class LibraryViewModel(private val repository: Repository) : ViewModel() {
         }
         _add.update { it.copy(input = text, error = null, adding = true) }
         viewModelScope.launch {
-            val failed = try {
+            val error = try {
                 repository.add(link)
-                false
+                null
             } catch (e: CancellationException) {
                 throw e
             } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
                 // Extraction failures come as many unrelated types (IO, parsing, ReCaptcha).
                 Log.w(TAG, "Could not add $link", e)
-                true
+                addError(e)
             }
-            _add.update {
-                if (failed) it.copy(adding = false, error = R.string.error_add_failed) else AddLinkState()
-            }
+            _add.update { if (error != null) it.copy(adding = false, error = error) else AddLinkState() }
         }
     }
 
@@ -89,3 +92,19 @@ class LibraryViewModel(private val repository: Repository) : ViewModel() {
         }
     }
 }
+
+/** Why adding failed, in words the user can act on. Only IO or rate limiting blames the connection. */
+@StringRes
+internal fun addError(error: Throwable): Int = when (classify(error)) {
+    Failure.UNAVAILABLE -> R.string.error_add_unavailable
+    Failure.BROKEN -> R.string.error_add_unreadable
+    // classify() also lands here for unknown crashes (e.g. a stripped class in a release build): not the network.
+    Failure.NETWORK -> if (generateSequence(error) { it.cause }.any { it.isConnectionProblem() }) {
+        R.string.error_add_failed
+    } else {
+        R.string.error_add_unreadable
+    }
+}
+
+private fun Throwable.isConnectionProblem() =
+    this is IOException || this is ReCaptchaException || this is SignInConfirmNotBotException
