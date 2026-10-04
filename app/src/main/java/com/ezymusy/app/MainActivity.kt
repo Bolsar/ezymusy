@@ -35,7 +35,13 @@ class MainActivity : ComponentActivity() {
     private val container by lazy { (application as App).container }
     private val library: LibraryViewModel by viewModels { LibraryViewModel.factory(container.repository) }
     private val player: PlayerViewModel by viewModels {
-        PlayerViewModel.factory(application, container.youTube, container.repository, container.extractorOutdated)
+        PlayerViewModel.factory(
+            application,
+            container.httpClient,
+            container.youTube,
+            container.repository,
+            container.extractorOutdated,
+        )
     }
 
     @OptIn(ExperimentalComposeUiApi::class)

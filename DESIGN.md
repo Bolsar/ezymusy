@@ -40,6 +40,7 @@ All in `sp`, so they follow the system font size.
 
 ## Rules (from mobileDev `ui-anti-slop`)
 - No gradients, glass, blur-on-everything, drop shadows on every surface, or cards inside cards. Lists are rows.
+- One exception: Now Playing shows the cover blurred under the background color at 85%, so its colors show through faintly while `onSurfaceVariant` text keeps 4.5:1 over any cover. Lime stays the only accent.
 - Icons: Material Symbols, rounded, one weight. No emoji as icons.
 - Every screen ships loading, empty, error and offline states.
 - Copy is specific: "Play link", not "Submit". Errors say what happened and what to do.

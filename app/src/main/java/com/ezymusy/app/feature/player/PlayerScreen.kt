@@ -36,6 +36,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -53,8 +54,10 @@ import java.util.concurrent.TimeUnit
 @Composable
 fun NowPlayingRoute(viewModel: PlayerViewModel, onBack: () -> Unit, modifier: Modifier = Modifier) {
     val playback by viewModel.state.collectAsStateWithLifecycle()
+    val artwork by viewModel.artwork.collectAsStateWithLifecycle()
     NowPlayingScreen(
         playback = playback,
+        artwork = artwork,
         onBack = onBack,
         onRetry = viewModel::retry,
         onTogglePlay = viewModel::togglePlay,
@@ -70,6 +73,7 @@ fun NowPlayingRoute(viewModel: PlayerViewModel, onBack: () -> Unit, modifier: Mo
 @Composable
 fun NowPlayingScreen(
     playback: Playback,
+    artwork: ImageBitmap?,
     onBack: () -> Unit,
     onRetry: () -> Unit,
     onTogglePlay: () -> Unit,
@@ -81,6 +85,7 @@ fun NowPlayingScreen(
     modifier: Modifier = Modifier,
 ) {
     Surface(modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+        ArtworkBackground(artwork)
         Column(
             modifier = Modifier
                 .safeDrawingPadding()
@@ -88,15 +93,21 @@ fun NowPlayingScreen(
             verticalArrangement = Arrangement.spacedBy(Dimens.SpaceL),
         ) {
             BackBar(onBack = onBack)
-            Spacer(Modifier.weight(1f))
-            when (playback) {
+            if (playback is Playback.Ready) {
+                // Shrinks before the controls do, on short screens and at large font sizes.
+                Cover(
+                    artwork,
+                    Modifier
+                        .weight(1f, fill = false)
+                        .align(Alignment.CenterHorizontally),
+                )
+                Controls(playback, onTogglePlay, onSeek, onNext, onPrevious, onToggleShuffle, onCycleRepeat)
+            } else {
+                Spacer(Modifier.weight(1f))
                 // Loads start from Library or Detail, where the mini player shows them.
-                Playback.Idle, Playback.Loading -> Unit
-                is Playback.Failed -> FailedState(playback, onRetry)
-                is Playback.Ready ->
-                    Controls(playback, onTogglePlay, onSeek, onNext, onPrevious, onToggleShuffle, onCycleRepeat)
+                if (playback is Playback.Failed) FailedState(playback, onRetry)
+                Spacer(Modifier.weight(1f))
             }
-            Spacer(Modifier.weight(1f))
         }
     }
 }
@@ -305,6 +316,7 @@ private fun NowPlayingPreview() {
     EzymusyTheme {
         NowPlayingScreen(
             playback = previewTrack,
+            artwork = null,
             onBack = {},
             onRetry = {},
             onTogglePlay = {},
