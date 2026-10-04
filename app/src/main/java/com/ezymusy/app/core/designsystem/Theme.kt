@@ -113,6 +113,9 @@ object Dimens {
     val TouchTarget = 48.dp
     val PlayButton = 64.dp
 
+    /** Blur radius of the cover behind Now Playing. */
+    val ArtworkBlur = 48.dp
+
     /** Material's opacity for disabled content. */
     const val DisabledAlpha = 0.38f
 }

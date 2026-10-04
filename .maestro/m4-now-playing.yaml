@@ -1,0 +1,35 @@
+# M4b: Now Playing shows the cover and follows Next.
+appId: com.ezymusy.app
+---
+- launchApp:
+    clearState: true
+- tapOn:
+    id: "link_input"
+- inputText: "https://www.youtube.com/playlist?list=PLFgquLnL59alCl_2TQvOiD5Vgm1hCaGSI"
+- tapOn:
+    id: "add_link"
+- extendedWaitUntil:
+    visible: "Playlist · .* tracks"
+    timeout: 60000
+- tapOn:
+    id: "link_row"
+- tapOn:
+    id: "track_row"
+    index: 1
+- tapOn:
+    id: "mini_player"
+- extendedWaitUntil:
+    visible:
+      id: "artwork"
+    timeout: 20000
+- copyTextFrom:
+    id: "now_title"
+- evalScript: ${output.first = maestro.copiedText}
+- tapOn:
+    id: "next"
+- extendedWaitUntil:
+    notVisible: ${output.first}
+    timeout: 10000
+- assertVisible:
+    id: "artwork"
+- takeScreenshot: docs/screenshots/m4-now-playing

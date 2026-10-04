@@ -2,6 +2,9 @@ package com.ezymusy.app.feature.player
 
 import android.app.Application
 import android.content.ComponentName
+import androidx.core.graphics.get
+import androidx.core.graphics.scale
+import android.graphics.BitmapFactory
 import android.util.Log
 import androidx.annotation.OptIn
 import androidx.annotation.StringRes
@@ -34,6 +37,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.HttpUrl.Companion.toHttpUrl
+import okhttp3.Request
 
 sealed interface Playback {
     data object Idle : Playback
@@ -65,6 +71,7 @@ sealed interface Playback {
 @Suppress("TooManyFunctions")
 class PlayerViewModel(
     private val app: Application,
+    private val http: OkHttpClient,
     private val youTube: YouTube,
     private val repository: Repository,
     private val extractorOutdated: StateFlow<Boolean>,
@@ -72,6 +79,13 @@ class PlayerViewModel(
 
     private val _state = MutableStateFlow<Playback>(Playback.Idle)
     val state: StateFlow<Playback> = _state.asStateFlow()
+
+    private val _artwork = MutableStateFlow<Artwork?>(null)
+
+    /** Null while loading, for tracks without a cover, or when it failed to load. */
+    val artwork: StateFlow<Artwork?> = _artwork.asStateFlow()
+    private var artworkUrl: String? = null
+    private var artworkJob: Job? = null
 
     private var controller = CompletableDeferred<MediaController>()
     private var controllerFuture: ListenableFuture<MediaController>? = null
@@ -254,6 +268,7 @@ class PlayerViewModel(
             )
         }
         _state.value = playback
+        loadArtwork(player?.mediaMetadata?.artworkUri?.toString())
 
         // Position only moves while playing and only matters while someone is watching.
         val shouldTick = player?.isPlaying == true && isVisible()
@@ -263,6 +278,31 @@ class PlayerViewModel(
                     delay(TICK_MS)
                     publish()
                 }
+            }
+        }
+    }
+
+    private fun loadArtwork(url: String?) {
+        if (url == artworkUrl) return
+        artworkUrl = url
+        artworkJob?.cancel()
+        _artwork.value = null
+        if (url == null) return
+        artworkJob = viewModelScope.launch {
+            try {
+                _artwork.value = withContext(Dispatchers.IO) {
+                    val bitmap = http.newCall(Request(url.toHttpUrl())).execute().use {
+                        BitmapFactory.decodeStream(it.body.byteStream())
+                    } ?: return@withContext null
+                    // Scaling to one pixel averages the whole image.
+                    val average = bitmap.scale(1, 1)[0, 0]
+                    Artwork(bitmap, tintFor(average))
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
+                // The placeholder stays; the cover is decoration.
+                Log.w(TAG, "Could not load artwork", e)
             }
         }
     }
@@ -280,11 +320,13 @@ class PlayerViewModel(
 
         fun factory(
             app: Application,
+            http: OkHttpClient,
             youTube: YouTube,
             repository: Repository,
             extractorOutdated: StateFlow<Boolean>,
         ) = viewModelFactory {
-            initializer { PlayerViewModel(app, youTube, repository, extractorOutdated) }
+            initializer { PlayerViewModel(app, http, youTube, repository, extractorOutdated) }
         }
     }
 }
+
