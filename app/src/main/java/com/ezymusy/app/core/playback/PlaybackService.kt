@@ -100,8 +100,12 @@ class PlaybackService : MediaSessionService() {
                 DefaultMediaSourceFactory(dataSource).setLoadErrorHandlingPolicy(
                     object : DefaultLoadErrorHandlingPolicy() {
                         // Retrying would reuse the same dead URL; fail fast so onPlayerError fetches a fresh one.
-                        override fun getRetryDelayMsFor(info: LoadErrorInfo) =
-                            if (isExpiredUrl(info.exception)) C.TIME_UNSET else super.getRetryDelayMsFor(info)
+                        override fun getRetryDelayMsFor(loadErrorInfo: LoadErrorInfo) =
+                            if (isExpiredUrl(loadErrorInfo.exception)) {
+                                C.TIME_UNSET
+                            } else {
+                                super.getRetryDelayMsFor(loadErrorInfo)
+                            }
                     },
                 ),
             )
@@ -157,8 +161,12 @@ class PlaybackService : MediaSessionService() {
                     Player.MEDIA_ITEM_TRANSITION_REASON_SEEK -> "next/prev"
                     else -> "transition"
                 }
-                // Paused starts would count the user's idle time.
-                pendingPerf = if (player.playWhenReady) label to SystemClock.elapsedRealtime() else null
+                pendingPerf = label to SystemClock.elapsedRealtime()
+            }
+
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                // Time from the play command, not from a queue that sat paused (play() follows setMediaItems).
+                if (playWhenReady) pendingPerf = pendingPerf?.let { it.first to SystemClock.elapsedRealtime() }
             }
 
             override fun onPlayerError(error: PlaybackException) {
