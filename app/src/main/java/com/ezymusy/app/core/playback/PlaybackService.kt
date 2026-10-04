@@ -12,8 +12,11 @@ import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.datasource.ResolvingDataSource
+import androidx.media3.datasource.cache.CacheDataSource
+import androidx.media3.datasource.cache.CacheWriter
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
@@ -54,6 +57,10 @@ private const val MIX_PAGES_PER_REFILL = 3
 // Stream URLs resolved before their turn, so Next and skips don't wait on extraction.
 private const val RESOLVE_AHEAD = 2
 
+// Start of each upcoming track fetched to disk (~10s of Opus), so Next plays without waiting on the network.
+// ExoPlayer's own preload only kicks in once the current track is fully buffered.
+private const val PRECACHE_BYTES = 256L * 1024
+
 // Buffer just enough to start, then up to 3 minutes: a song or two, without hoarding memory.
 private const val MIN_BUFFER_MS = 15_000
 private const val MAX_BUFFER_MS = 180_000
@@ -77,6 +84,7 @@ class PlaybackService : MediaSessionService() {
     private var strikes = 0
     private var resolveAhead: Job? = null
     private var aheadIds = emptyList<String>()
+    private lateinit var cachedSource: CacheDataSource.Factory
 
     // The item whose stream URL was just re-resolved after a 403; a second 403 on it is a real failure.
     private var recoveredId: String? = null
@@ -90,9 +98,13 @@ class PlaybackService : MediaSessionService() {
         val youTube = container.youTube
 
         val http = OkHttpDataSource.Factory(container.httpClient).setUserAgent(YouTube.USER_AGENT)
+        cachedSource = CacheDataSource.Factory()
+            .setCache(container.audioCache)
+            .setUpstreamDataSourceFactory(http)
+            .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
         // MediaItems carry "yt://<videoId>"; the real stream URL is resolved when the loader opens it.
-        val dataSource = ResolvingDataSource.Factory(http) { spec ->
-            if (spec.uri.scheme == SCHEME) spec.withUri(youTube.audioUrl(spec.uri.host!!).toUri()) else spec
+        val dataSource = ResolvingDataSource.Factory(cachedSource) { spec ->
+            if (spec.uri.scheme == SCHEME) spec.toStream(spec.uri.host!!, youTube.audioUrl(spec.uri.host!!)) else spec
         }
 
         val player = ExoPlayer.Builder(this)
@@ -229,8 +241,11 @@ class PlaybackService : MediaSessionService() {
             for (id in ids) {
                 // Cancelling can't interrupt a blocking fetch, but it stops the next one.
                 if (!isActive) break
-                runCatching { youTube.audioUrl(id) }
-                    .onFailure { Log.d(TAG, "Resolve-ahead failed for $id: $it") }
+                runCatching {
+                    val spec = DataSpec.Builder().setLength(PRECACHE_BYTES).build()
+                        .toStream(id, youTube.audioUrl(id))
+                    CacheWriter(cachedSource.createDataSource(), spec, null, null).cache()
+                }.onFailure { Log.d(TAG, "Resolve-ahead failed for $id: $it") }
             }
         }
     }
@@ -283,6 +298,15 @@ class PlaybackService : MediaSessionService() {
         session = null
         super.onDestroy()
     }
+}
+
+/** Points [this] at the stream [url], cached under video and format: a re-resolved URL still hits the same bytes. */
+@OptIn(UnstableApi::class)
+private fun DataSpec.toStream(videoId: String, url: String): DataSpec {
+    val uri = url.toUri()
+    // No itag: can't tell formats apart, so only this exact URL may reuse the bytes.
+    val key = uri.getQueryParameter("itag")?.let { "$videoId:$it" } ?: url
+    return buildUpon().setUri(uri).setKey(key).build()
 }
 
 /** YouTube answers 403 or 410 once a stream URL expired or was revoked: a fresh URL fixes it. */
