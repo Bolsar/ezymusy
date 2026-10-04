@@ -13,7 +13,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Tag must match versionName
-        run: grep -q "versionName = \"${GITHUB_REF_NAME#v}\"" app/build.gradle.kts
+        run: grep -qF "versionName = \"${GITHUB_REF_NAME#v}\"" app/build.gradle.kts
       - uses: actions/setup-java@v4
         with:
           distribution: temurin

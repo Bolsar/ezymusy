@@ -73,8 +73,8 @@ M1 single video → background play + lock-screen controls · M2 playlists + Roo
 - Repo `Bolsar/ezymusy`: flip to public at start (first action after "go").
 - Visual identity: **Dark minimal** — near-black surfaces, single electric-lime accent (~`#C6F432`), Space Grotesk only. Tokens locked in `DESIGN.md`.
 - Device testing: existing `Small_Phone` AVD (API 37, arm64), started headless (`emulator -avd Small_Phone -no-window -no-snapshot-save`) for test runs, killed after. adb at `~/Library/Android/sdk/platform-tools/adb`. No phone pairing.
-- Maestro E2E: runs on that emulator. Install at start (`curl -fsSL https://get.maestro.mobile.dev | bash`). One flow per milestone in `.maestro/`, run via mobileDev `harness/verify --flow`. `testTagsAsResourceId = true`. Lock-screen/background checks via `adb shell input keyevent KEYCODE_SLEEP` + `dumpsys media_session` (Maestro can't drive lock screen).
-- mobileDev plugin installed (`mobile-dev@bolsar`) — load `mobile-dev` skill first.
+- Maestro E2E: runs on that emulator. Install at start (`curl -fsSL https://get.maestro.mobile.dev | bash`). One flow per milestone in `.maestro/`, run via mobile-dev-android `verify --flow`. `testTagsAsResourceId = true`. Lock-screen/background checks via `adb shell input keyevent KEYCODE_SLEEP` + `dumpsys media_session` (Maestro can't drive lock screen).
+- mobileDev plugins installed (`mobile-dev@bolsar`, `mobile-dev-android@bolsar`). Invoke `mobile-dev:mobile-dev` via Skill first. Verify script ships in the `mobile-dev-android` pack (0.7.0+).
 - Keystore: generated in M5, copy at `~/ezymusy-keys/`, GitHub secrets; user backs up in password manager.
 
 ## Verification
