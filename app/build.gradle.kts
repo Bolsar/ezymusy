@@ -4,6 +4,7 @@ plugins {
     alias(libs.plugins.detekt)
     alias(libs.plugins.ksp)
     alias(libs.plugins.room)
+    alias(libs.plugins.baselineprofile)
 }
 
 android {
@@ -84,6 +85,9 @@ dependencies {
     implementation(libs.okhttp)
     implementation(libs.newpipe.extractor)
     implementation(libs.room.runtime)
+    // Sideloaded installs (no Play Store) only get AOT from profiles through profileinstaller.
+    implementation(libs.androidx.profileinstaller)
+    baselineProfile(project(":baselineprofile"))
     ksp(libs.room.compiler)
 
     testImplementation(libs.junit)

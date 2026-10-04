@@ -17,3 +17,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "ezymusy"
 include(":app")
+include(":baselineprofile")
