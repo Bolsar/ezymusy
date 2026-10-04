@@ -304,7 +304,9 @@ class PlaybackService : MediaSessionService() {
 @OptIn(UnstableApi::class)
 private fun DataSpec.toStream(videoId: String, url: String): DataSpec {
     val uri = url.toUri()
-    return buildUpon().setUri(uri).setKey("$videoId:${uri.getQueryParameter("itag")}").build()
+    // No itag: can't tell formats apart, so only this exact URL may reuse the bytes.
+    val key = uri.getQueryParameter("itag")?.let { "$videoId:$it" } ?: url
+    return buildUpon().setUri(uri).setKey(key).build()
 }
 
 /** YouTube answers 403 or 410 once a stream URL expired or was revoked: a fresh URL fixes it. */
