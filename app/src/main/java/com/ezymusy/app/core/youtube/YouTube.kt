@@ -42,6 +42,9 @@ class YouTube(private val client: OkHttpClient) {
     // ponytail: unbounded map; one entry per played track, cleared on process death. LRU if it ever matters.
     private val cache = ConcurrentHashMap<String, Resolved>()
 
+    // One lock per video, so resolve-ahead and the player's loader never extract the same track twice at once.
+    private val resolving = ConcurrentHashMap<String, Any>()
+
     // Where each live mix continues. In memory only: mixes restart fresh after process death.
     private val mixPages = ConcurrentHashMap<String, Page>()
 
@@ -97,19 +100,23 @@ class YouTube(private val client: OkHttpClient) {
     }
 
     private fun resolve(videoId: String): Resolved {
-        cache[videoId]?.takeIf { it.expiresAtMs > System.currentTimeMillis() }?.let { return it }
-
-        val info = StreamInfo.getInfo(ServiceList.YouTube, "https://www.youtube.com/watch?v=$videoId")
-        val stream = bestAudio(info.audioStreams)
-            ?: throw ExtractionException("No playable audio stream for $videoId")
-        val track = Track(
-            videoId = videoId,
-            title = info.name,
-            artist = info.uploaderName.orEmpty(),
-            artworkUrl = info.thumbnails.largest(),
-            durationSec = info.duration,
-        )
-        return Resolved(track, stream.content, expiresAt(stream.content)).also { cache[videoId] = it }
+        fun cached() = cache[videoId]?.takeIf { it.expiresAtMs > System.currentTimeMillis() }
+        cached()?.let { return it }
+        return synchronized(resolving.getOrPut(videoId) { Any() }) {
+            cached() ?: run {
+                val info = StreamInfo.getInfo(ServiceList.YouTube, "https://www.youtube.com/watch?v=$videoId")
+                val stream = bestAudio(info.audioStreams)
+                    ?: throw ExtractionException("No playable audio stream for $videoId")
+                val track = Track(
+                    videoId = videoId,
+                    title = info.name,
+                    artist = info.uploaderName.orEmpty(),
+                    artworkUrl = info.thumbnails.largest(),
+                    durationSec = info.duration,
+                )
+                Resolved(track, stream.content, expiresAt(stream.content)).also { cache[videoId] = it }
+            }
+        }
     }
 
     private fun StreamInfoItem.toTrack() = Track(
