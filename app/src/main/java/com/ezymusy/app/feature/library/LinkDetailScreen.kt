@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -68,6 +69,7 @@ fun LinkDetailRoute(
         onPlay = onPlay,
         onPlayMix = onPlayMix,
         onIncludeInShuffle = { viewModel.setIncludeInShuffle(linkId, it) },
+        onRemoveTrack = viewModel::removeTrack,
         onDelete = {
             viewModel.delete(linkId)
             onBack()
@@ -85,6 +87,7 @@ fun LinkDetailScreen(
     onPlay: (List<Track>, Int) -> Unit,
     onPlayMix: (mixId: String, seedVideoId: String?) -> Unit,
     onIncludeInShuffle: (Boolean) -> Unit,
+    onRemoveTrack: (trackId: Long) -> Unit,
     onDelete: () -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
@@ -98,7 +101,7 @@ fun LinkDetailScreen(
                 .padding(horizontal = Dimens.SpaceL, vertical = Dimens.SpaceS),
             verticalArrangement = Arrangement.spacedBy(Dimens.SpaceL),
         ) {
-            BackBar(onBack = onBack, title = detail?.link?.title.orEmpty()) {
+            BackBar(onBack = onBack, title = detail?.link?.let { linkTitle(it.type, it.title) }.orEmpty()) {
                 IconButton(onClick = { confirmDelete = true }, modifier = Modifier.testTag("delete_link")) {
                     Icon(Icons.Rounded.Delete, contentDescription = stringResource(R.string.delete_link))
                 }
@@ -127,8 +130,9 @@ fun LinkDetailScreen(
                 Text(stringResource(if (link?.type == LinkType.MIX) R.string.play_mix else R.string.play_all))
             }
             if (link != null) IncludeInShuffle(link.includeInShuffle, onIncludeInShuffle)
+            val isGroup = link?.type == LinkType.VIDEO || link?.type == LinkType.SHORTS
             LazyColumn(Modifier.weight(1f)) {
-                itemsIndexed(rows, key = { i, _ -> i }) { i, row ->
+                itemsIndexed(rows, key = { _, row -> row.id }) { i, row ->
                     val track = row.toTrack()
                     TrackRow(
                         track,
@@ -136,6 +140,8 @@ fun LinkDetailScreen(
                         // Position in the queue, which skips the unavailable rows above this one.
                         onClick = { onPlay(tracks, rows.take(i).count { !it.unavailable }) }
                             .takeUnless { row.unavailable },
+                        // Removing the last video removes the empty group too.
+                        onRemove = { if (rows.size == 1) onDelete() else onRemoveTrack(row.id) }.takeIf { isGroup },
                     )
                 }
             }
@@ -180,7 +186,7 @@ private fun IncludeInShuffle(checked: Boolean, onCheckedChange: (Boolean) -> Uni
 }
 
 @Composable
-private fun TrackRow(track: Track, isCurrent: Boolean, onClick: (() -> Unit)?) {
+private fun TrackRow(track: Track, isCurrent: Boolean, onClick: (() -> Unit)?, onRemove: (() -> Unit)?) {
     val colors = MaterialTheme.colorScheme
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -222,6 +228,11 @@ private fun TrackRow(track: Track, isCurrent: Boolean, onClick: (() -> Unit)?) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+        if (onRemove != null) {
+            IconButton(onClick = onRemove, modifier = Modifier.testTag("remove_track")) {
+                Icon(Icons.Rounded.Close, contentDescription = stringResource(R.string.remove_video))
+            }
+        }
     }
 }
 
@@ -241,6 +252,7 @@ private fun LinkDetailPreview() {
             onPlay = { _, _ -> },
             onPlayMix = { _, _ -> },
             onIncludeInShuffle = {},
+            onRemoveTrack = {},
             onDelete = {},
             onBack = {},
         )

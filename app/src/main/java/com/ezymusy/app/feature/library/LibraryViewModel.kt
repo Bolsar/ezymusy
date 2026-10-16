@@ -79,6 +79,10 @@ class LibraryViewModel(private val repository: Repository) : ViewModel() {
         viewModelScope.launch { repository.setIncludeInShuffle(linkId, include) }
     }
 
+    fun removeTrack(trackId: Long) {
+        viewModelScope.launch { repository.removeTrack(trackId) }
+    }
+
     fun delete(linkId: Long) {
         viewModelScope.launch { repository.delete(linkId) }
     }

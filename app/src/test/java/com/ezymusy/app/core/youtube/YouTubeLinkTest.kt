@@ -13,12 +13,23 @@ class YouTubeLinkTest {
             "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
             "https://m.youtube.com/watch?v=dQw4w9WgXcQ&t=42s",
             "https://youtu.be/dQw4w9WgXcQ?si=abc123",
-            "https://www.youtube.com/shorts/dQw4w9WgXcQ",
             "https://music.youtube.com/watch?v=dQw4w9WgXcQ&feature=share",
             "Check this out https://youtu.be/dQw4w9WgXcQ shared via YouTube",
             "Listen: https://youtu.be/dQw4w9WgXcQ.",
             "(https://www.youtube.com/watch?v=dQw4w9WgXcQ)",
         ).forEach { assertEquals(it, expected, YouTubeLink.parse(it)) }
+    }
+
+    @Test
+    fun `shorts links are told apart from other videos`() {
+        assertEquals(
+            YouTubeLink.Video("dQw4w9WgXcQ", short = true),
+            YouTubeLink.parse("https://www.youtube.com/shorts/dQw4w9WgXcQ?si=abc123"),
+        )
+        assertEquals(
+            YouTubeLink.Video("dQw4w9WgXcQ", short = true),
+            YouTubeLink.parse("https://youtube.com/shorts/dQw4w9WgXcQ"),
+        )
     }
 
     @Test

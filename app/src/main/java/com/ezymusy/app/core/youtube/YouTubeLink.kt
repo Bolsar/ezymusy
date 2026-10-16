@@ -4,7 +4,8 @@ import java.net.URI
 
 /** What a pasted or shared YouTube URL points at. */
 sealed interface YouTubeLink {
-    data class Video(val videoId: String) : YouTubeLink
+    /** [short] when the URL is a `/shorts/` link; shorts are grouped apart from other single videos. */
+    data class Video(val videoId: String, val short: Boolean = false) : YouTubeLink
     data class Playlist(val playlistId: String) : YouTubeLink
 
     /** Auto-generated, endless radio (`list=RD…`). Played live, never stored as tracks. */
@@ -41,7 +42,7 @@ sealed interface YouTubeLink {
             return when {
                 list != null && isMix(list) -> Mix(list, videoId)
                 list != null -> Playlist(list)
-                videoId != null -> Video(videoId)
+                videoId != null -> Video(videoId, short = path.firstOrNull() == "shorts")
                 else -> null
             }
         }
