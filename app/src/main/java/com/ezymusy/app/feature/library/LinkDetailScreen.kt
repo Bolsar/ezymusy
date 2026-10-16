@@ -3,7 +3,6 @@ package com.ezymusy.app.feature.library
 import android.text.format.DateUtils
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -24,6 +23,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -36,7 +36,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
@@ -171,17 +172,23 @@ private fun IncludeInShuffle(checked: Boolean, onCheckedChange: (Boolean) -> Uni
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = Dimens.TouchTarget)
-            .toggleable(value = checked, role = Role.Switch, onValueChange = onCheckedChange)
-            .testTag("include_in_shuffle"),
+            .heightIn(min = Dimens.TouchTarget),
     ) {
-        Text(
-            stringResource(R.string.include_in_shuffle),
-            style = MaterialTheme.typography.bodyLarge,
-            modifier = Modifier.weight(1f),
+        val label = stringResource(R.string.include_in_shuffle)
+        Text(label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+        // Only the switch toggles. Material's unchecked thumb uses `outline`, which this theme makes the same
+        // color as the track, so the off thumb gets the muted text color to stay visible.
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            colors = SwitchDefaults.colors(
+                uncheckedThumbColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                uncheckedBorderColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            ),
+            modifier = Modifier
+                .semantics { contentDescription = label }
+                .testTag("include_in_shuffle"),
         )
-        // The whole row toggles; the switch only shows the state.
-        Switch(checked = checked, onCheckedChange = null)
     }
 }
 
