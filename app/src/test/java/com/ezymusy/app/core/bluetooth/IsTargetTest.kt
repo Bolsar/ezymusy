@@ -23,4 +23,9 @@ class IsTargetTest {
         assertFalse(isTarget(AudioDeviceInfo.TYPE_BLUETOOTH_SCO, "Galaxy Buds2", buds.address, buds))
         assertFalse(isTarget(AudioDeviceInfo.TYPE_BLUETOOTH_A2DP, "Car", "11:22:33:44:55:66", buds))
     }
+
+    @Test
+    fun `same model name on another device is not a match`() {
+        assertFalse(isTarget(AudioDeviceInfo.TYPE_BLUETOOTH_A2DP, "Galaxy Buds2", "11:22:33:44:55:66", buds))
+    }
 }

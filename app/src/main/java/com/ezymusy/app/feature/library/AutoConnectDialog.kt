@@ -1,6 +1,8 @@
 package com.ezymusy.app.feature.library
 
+import android.bluetooth.BluetoothAdapter
 import android.content.Intent
+import android.net.Uri
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -70,9 +72,16 @@ private fun AutoConnectDialog(autoConnect: AutoConnect, onDismiss: () -> Unit) {
         refresh++
         onPauseOrDispose {}
     }
-    val askPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { refresh++ }
+    // After a denial Android may stop showing its prompt ("don't ask again"), so the button opens app settings.
+    var denied by rememberSaveable { mutableStateOf(false) }
+    val askPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+        denied = !it
+        refresh++
+    }
+    val turnOn = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { refresh++ }
     val context = LocalContext.current
     val granted = remember(refresh) { autoConnect.hasPermission }
+    val isOn = remember(refresh) { autoConnect.isOn }
     val paired = remember(refresh) { autoConnect.paired() }
 
     AlertDialog(
@@ -88,8 +97,21 @@ private fun AutoConnectDialog(autoConnect: AutoConnect, onDismiss: () -> Unit) {
                     !autoConnect.hasAdapter -> Text(stringResource(R.string.auto_connect_no_adapter))
                     !granted -> {
                         Text(stringResource(R.string.auto_connect_permission))
-                        TextButton(onClick = { autoConnect.permission?.let(askPermission::launch) }) {
-                            Text(stringResource(R.string.auto_connect_allow))
+                        if (denied) {
+                            TextButton(onClick = { context.startActivity(appSettings(context.packageName)) }) {
+                                Text(stringResource(R.string.auto_connect_app_settings))
+                            }
+                        } else {
+                            TextButton(onClick = { autoConnect.permission?.let(askPermission::launch) }) {
+                                Text(stringResource(R.string.auto_connect_allow))
+                            }
+                        }
+                    }
+                    !isOn -> {
+                        Text(stringResource(R.string.auto_connect_bt_needed))
+                        @Suppress("MissingPermission") // granted checked above
+                        TextButton(onClick = { turnOn.launch(Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)) }) {
+                            Text(stringResource(R.string.auto_connect_turn_on))
                         }
                     }
                     paired.isEmpty() -> {
@@ -113,6 +135,9 @@ private fun AutoConnectDialog(autoConnect: AutoConnect, onDismiss: () -> Unit) {
         confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.done)) } },
     )
 }
+
+private fun appSettings(packageName: String) =
+    Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", packageName, null))
 
 @Composable
 private fun EnabledSwitch(checked: Boolean, enabled: Boolean, onCheckedChange: (Boolean) -> Unit) {

@@ -35,9 +35,13 @@ private val MUSIC_OUTPUTS = setOf(
     AudioDeviceInfo.TYPE_BLE_SPEAKER,
 )
 
-/** True when an audio output of [type] with [name]/[address] is [target]. Address can be blank before API 28. */
+/**
+ * True when an audio output of [type] with [name]/[address] is [target]. The name only counts when the address is
+ * blank (before API 28): two headphones of the same model share a name.
+ */
 internal fun isTarget(type: Int, name: String, address: String, target: BtDevice) =
-    type in MUSIC_OUTPUTS && (address.equals(target.address, ignoreCase = true) || name == target.name)
+    type in MUSIC_OUTPUTS &&
+        if (address.isBlank()) name == target.name else address.equals(target.address, ignoreCase = true)
 
 /**
  * Turns on Bluetooth (with the user's tap: apps can't do it silently since Android 13) and waits for the picked
@@ -62,6 +66,7 @@ class AutoConnect(private val context: Context) {
         get() = permission == null ||
             ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
 
+    /** Empty while Bluetooth is off: Android only lists bonded devices when it is on. */
     @SuppressLint("MissingPermission") // callers check hasPermission
     fun paired(): List<BtDevice> {
         if (!hasPermission) return emptyList()
@@ -82,9 +87,10 @@ class AutoConnect(private val context: Context) {
                 if (added.any { it.matches(device) }) connected.complete(Unit)
             }
         }
-        // Also reports devices already connected, so a device that connected before this call still counts.
         audio.registerAudioDeviceCallback(callback, Handler(Looper.getMainLooper()))
         return try {
+            // Already connected before the callback was registered.
+            if (audio.getDevices(AudioManager.GET_DEVICES_OUTPUTS).any { it.matches(device) }) return true
             withTimeoutOrNull(timeout) { connected.await() } != null
         } finally {
             audio.unregisterAudioDeviceCallback(callback)

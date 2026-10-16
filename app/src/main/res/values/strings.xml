@@ -57,6 +57,9 @@
     <string name="auto_connect_pick">Choose headphones</string>
     <string name="auto_connect_permission">Ezymusy needs the Nearby devices permission to see your paired headphones.</string>
     <string name="auto_connect_allow">Allow</string>
+    <string name="auto_connect_app_settings">Open app settings</string>
+    <string name="auto_connect_bt_needed">Turn on Bluetooth to see your paired headphones.</string>
+    <string name="auto_connect_turn_on">Turn on Bluetooth</string>
     <string name="auto_connect_no_adapter">This device has no Bluetooth.</string>
     <string name="auto_connect_no_paired">No paired headphones yet. Pair them in Bluetooth settings, then come back.</string>
     <string name="auto_connect_settings">Open Bluetooth settings</string>

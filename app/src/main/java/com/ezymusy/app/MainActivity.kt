@@ -168,17 +168,16 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun connectAndShuffle(device: BtDevice) {
-        lifecycleScope.launch {
-            toast(getString(R.string.auto_connect_waiting, device.name))
-            if (container.autoConnect.awaitConnected(device)) {
-                player.shuffleAll()
-            } else {
-                toast(getString(R.string.auto_connect_failed, device.name))
-            }
-        }
+        toast(getString(R.string.auto_connect_waiting, device.name))
+        val failed = getString(R.string.auto_connect_failed, device.name)
+        val app = applicationContext // outlives this activity if it rotates mid-wait
+        player.shuffleAllWhen(
+            ready = { container.autoConnect.awaitConnected(device) },
+            onFail = { Toast.makeText(app, failed, Toast.LENGTH_LONG).show() },
+        )
     }
 
-    // ponytail: Toast for two one-off messages; a SnackbarHost once the app has more transient messages.
+    // ponytail: Toast for a few one-off messages; a SnackbarHost once the app has more transient messages.
     private fun toast(text: String) = Toast.makeText(this, text, Toast.LENGTH_LONG).show()
 
     private fun handleShare(intent: Intent) {
