@@ -162,6 +162,9 @@ class PlayerViewModel(
         if (tracks.isNotEmpty()) start(tracks.map { it.toMediaItem() }, 0)
     }
 
+    /** Waits for the player service; true when it is already playing (the app reopened mid-song). */
+    suspend fun isPlaying() = runCatching { controller.await().isPlaying }.getOrDefault(false)
+
     /** Runs one queue load at a time: a newer request cancels the older, so a slow fetch never overrides it. */
     private fun load(block: suspend () -> Unit) {
         loadJob?.cancel()

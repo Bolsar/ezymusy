@@ -7,6 +7,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.database.StandaloneDatabaseProvider
 import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
 import androidx.media3.datasource.cache.SimpleCache
+import com.ezymusy.app.core.bluetooth.AutoConnect
 import com.ezymusy.app.core.data.AppDb
 import com.ezymusy.app.core.data.Repository
 import com.ezymusy.app.core.youtube.YouTube
@@ -45,4 +46,6 @@ class AppContainer(context: Context) {
 
     /** True once several tracks in a row failed to extract: YouTube likely changed and the app needs an update. */
     val extractorOutdated = MutableStateFlow(false)
+
+    val autoConnect = AutoConnect(context)
 }
