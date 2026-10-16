@@ -20,7 +20,7 @@ One dark theme, on purpose. Near-black surfaces, a single electric-lime accent, 
 
 Contrast checked: `#EDEDED` on `#0B0B0C` ≈ 17:1, `#9A9AA0` on `#0B0B0C` ≈ 7:1, `#0B0B0C` on `#C6F432` ≈ 15:1, `#FF6B6B` on `#0B0B0C` ≈ 7:1. All pass WCAG AA.
 
-## Type: Space Grotesk (variable, OFL)
+## Type: Inter (variable, OFL)
 | Style | Size / line | Weight | Use |
 |---|---|---|---|
 | headlineSmall | 24/30 | 600 | Track title on Now Playing |

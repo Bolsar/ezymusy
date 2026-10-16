@@ -16852,7 +16852,7 @@ SPLcom/ezymusy/app/core/designsystem/Palette;->getTextMuted-0d7_KjU()J
 Lcom/ezymusy/app/core/designsystem/ThemeKt;
 SPLcom/ezymusy/app/core/designsystem/ThemeKt;-><clinit>()V
 SPLcom/ezymusy/app/core/designsystem/ThemeKt;->EzymusyTheme(Lkotlin/jvm/functions/Function2;Landroidx/compose/runtime/Composer;I)V
-SPLcom/ezymusy/app/core/designsystem/ThemeKt;->grotesk(I)Landroidx/compose/ui/text/font/Font;
+SPLcom/ezymusy/app/core/designsystem/ThemeKt;->inter(I)Landroidx/compose/ui/text/font/Font;
 SPLcom/ezymusy/app/core/designsystem/ThemeKt;->style(III)Landroidx/compose/ui/text/TextStyle;
 Lcom/ezymusy/app/core/playback/PlaybackService;
 SPLcom/ezymusy/app/core/playback/PlaybackService;-><clinit>()V
