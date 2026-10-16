@@ -181,14 +181,15 @@ private fun LinkList(links: List<LinkRow>, onOpenLink: (Long) -> Unit) {
                     .testTag("link_row"),
             ) {
                 Text(
-                    link.title,
+                    linkTitle(link.type, link.title),
                     style = MaterialTheme.typography.titleMedium,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
                     when (link.type) {
-                        LinkType.VIDEO -> stringResource(R.string.link_video)
+                        LinkType.VIDEO -> pluralStringResource(R.plurals.link_videos, link.trackCount, link.trackCount)
+                        LinkType.SHORTS -> pluralStringResource(R.plurals.link_shorts, link.trackCount, link.trackCount)
                         LinkType.MIX -> stringResource(R.string.link_mix)
                         LinkType.PLAYLIST ->
                             pluralStringResource(R.plurals.link_playlist, link.trackCount, link.trackCount)
@@ -202,6 +203,14 @@ private fun LinkList(links: List<LinkRow>, onOpenLink: (Long) -> Unit) {
     }
 }
 
+/** The video groups are named by the app, in the user's language; other links keep their YouTube title. */
+@Composable
+internal fun linkTitle(type: LinkType, title: String) = when (type) {
+    LinkType.VIDEO -> stringResource(R.string.group_videos)
+    LinkType.SHORTS -> stringResource(R.string.group_shorts)
+    LinkType.PLAYLIST, LinkType.MIX -> title
+}
+
 @Preview
 @Composable
 private fun LibraryPreview() {
@@ -210,7 +219,8 @@ private fun LibraryPreview() {
             add = AddLinkState(),
             links = listOf(
                 LinkRow(1, LinkType.PLAYLIST, "Lo-fi beats to study to", 42),
-                LinkRow(2, LinkType.VIDEO, "Never Gonna Give You Up", 1),
+                LinkRow(2, LinkType.VIDEO, "Videos", 3),
+                LinkRow(3, LinkType.SHORTS, "Shorts", 1),
             ),
             onInputChange = {},
             onAdd = {},

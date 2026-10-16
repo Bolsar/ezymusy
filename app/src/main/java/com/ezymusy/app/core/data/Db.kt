@@ -14,6 +14,8 @@ import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.Transaction
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import com.ezymusy.app.core.youtube.Playlist
 import com.ezymusy.app.core.youtube.Track
 import com.ezymusy.app.core.youtube.YouTube
@@ -28,10 +30,15 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.withContext
 import java.util.concurrent.TimeUnit
 
-enum class LinkType { VIDEO, PLAYLIST, MIX }
+/** VIDEO and SHORTS are the two groups every single-video link is added to, one link each. */
+enum class LinkType { VIDEO, SHORTS, PLAYLIST, MIX }
+
+private const val VIDEOS_SOURCE = "videos"
+private const val SHORTS_SOURCE = "shorts"
 
 /**
- * One pasted or shared link. [sourceId] is the videoId or playlistId, so the same link is stored once.
+ * One pasted or shared link. [sourceId] is the playlistId, or [VIDEOS_SOURCE] / [SHORTS_SOURCE] for the
+ * video groups, so the same link is stored once.
  * A MIX has no stored tracks; its pages are fetched live from [sourceId] and [seedVideoId].
  */
 @Entity(tableName = "links", indices = [Index(value = ["sourceId"], unique = true)])
@@ -106,11 +113,36 @@ abstract class LibraryDao {
     @Query("SELECT id FROM links WHERE sourceId = :sourceId")
     abstract suspend fun linkId(sourceId: String): Long?
 
+    @Query("SELECT EXISTS(SELECT 1 FROM tracks WHERE linkId = :linkId AND videoId = :videoId)")
+    abstract suspend fun hasTrack(linkId: Long, videoId: String): Boolean
+
+    @Query("DELETE FROM tracks WHERE id = :trackId")
+    abstract suspend fun deleteTrack(trackId: Long)
+
+    @Query("SELECT COALESCE(MAX(position) + 1, 0) FROM tracks WHERE linkId = :linkId")
+    protected abstract suspend fun nextPosition(linkId: Long): Int
+
+    @Query("UPDATE links SET artworkUrl = :artworkUrl, addedAt = :addedAt WHERE id = :linkId")
+    protected abstract suspend fun touch(linkId: Long, artworkUrl: String?, addedAt: Long)
+
+    /**
+     * Appends [track] to the video group [group], creating the group on its first video. The group takes the
+     * newest video's artwork and moves to the top of the library.
+     */
+    @Transaction
+    open suspend fun addToGroup(group: LinkEntity, track: Track): Long {
+        val id = linkId(group.sourceId) ?: insert(group)
+        if (hasTrack(id, track.videoId)) return id
+        insertTracks(id, listOf(track), from = nextPosition(id))
+        touch(id, track.artworkUrl, group.addedAt)
+        return id
+    }
+
     @Query("UPDATE tracks SET unavailable = 1 WHERE videoId = :videoId")
     abstract suspend fun markUnavailable(videoId: String)
 
     /** Single videos are never re-synced, so their marks are cleared on each launch instead. */
-    @Query("UPDATE tracks SET unavailable = 0 WHERE linkId IN (SELECT id FROM links WHERE type = 'VIDEO')")
+    @Query("UPDATE tracks SET unavailable = 0 WHERE linkId IN (SELECT id FROM links WHERE type IN ('VIDEO', 'SHORTS'))")
     abstract suspend fun clearVideoMarks()
 
     @Query("SELECT * FROM links WHERE type = 'PLAYLIST' AND lastSyncedAt < :before")
@@ -146,7 +178,7 @@ abstract class LibraryDao {
         return id
     }
 
-    private suspend fun insertTracks(linkId: Long, tracks: List<Track>) {
+    private suspend fun insertTracks(linkId: Long, tracks: List<Track>, from: Int = 0) {
         insert(
             tracks.mapIndexed { i, t ->
                 TrackEntity(
@@ -156,7 +188,7 @@ abstract class LibraryDao {
                     artist = t.artist,
                     artworkUrl = t.artworkUrl,
                     durationSec = t.durationSec,
-                    position = i,
+                    position = from + i,
                 )
             },
         )
@@ -165,14 +197,42 @@ abstract class LibraryDao {
 
 @Database(
     entities = [LinkEntity::class, TrackEntity::class],
-    version = 2,
+    version = 3,
     autoMigrations = [AutoMigration(from = 1, to = 2)],
 )
 abstract class AppDb : RoomDatabase() {
     abstract fun library(): LibraryDao
 
     companion object {
-        fun build(context: Context) = Room.databaseBuilder(context, AppDb::class.java, "ezymusy.db").build()
+        fun build(context: Context) = Room.databaseBuilder(context, AppDb::class.java, "ezymusy.db")
+            .addMigrations(MERGE_VIDEOS)
+            .build()
+    }
+}
+
+/**
+ * Version 2 stored each single video as its own link. Merges them into the Videos group, oldest first.
+ * Shorts were not told apart back then, so they land in Videos too.
+ */
+private val MERGE_VIDEOS = object : Migration(2, 3) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        val count = db.query("SELECT COUNT(*) FROM links WHERE type = 'VIDEO'").use { it.moveToFirst(); it.getInt(0) }
+        if (count == 0) return
+        db.execSQL(
+            """INSERT INTO links (sourceId, type, title, artworkUrl, includeInShuffle, lastSyncedAt, addedAt)
+            SELECT '$VIDEOS_SOURCE', 'VIDEO', 'Videos',
+                (SELECT artworkUrl FROM links WHERE type = 'VIDEO' ORDER BY addedAt DESC LIMIT 1),
+                MAX(includeInShuffle), MAX(lastSyncedAt), MAX(addedAt)
+            FROM links WHERE type = 'VIDEO'""",
+        )
+        db.execSQL(
+            """UPDATE tracks SET
+                position = (SELECT COUNT(*) FROM links o WHERE o.type = 'VIDEO' AND o.sourceId != '$VIDEOS_SOURCE'
+                    AND o.addedAt < (SELECT addedAt FROM links l WHERE l.id = tracks.linkId)),
+                linkId = (SELECT id FROM links WHERE sourceId = '$VIDEOS_SOURCE')
+            WHERE linkId IN (SELECT id FROM links WHERE type = 'VIDEO' AND sourceId != '$VIDEOS_SOURCE')""",
+        )
+        db.execSQL("DELETE FROM links WHERE type = 'VIDEO' AND sourceId != '$VIDEOS_SOURCE'")
     }
 }
 
@@ -192,6 +252,8 @@ class Repository(private val dao: LibraryDao, private val youTube: YouTube) {
     suspend fun delete(linkId: Long) = dao.delete(linkId)
 
     suspend fun markUnavailable(videoId: String) = dao.markUnavailable(videoId)
+
+    suspend fun removeTrack(trackId: Long) = dao.deleteTrack(trackId)
 
     /**
      * Refetches playlists last synced over [SYNC_INTERVAL_MS] ago, which also clears their unavailable marks.
@@ -233,10 +295,13 @@ class Repository(private val dao: LibraryDao, private val youTube: YouTube) {
         (dao.shuffleTracks().map(TrackEntity::toTrack) + mixes.awaitAll().flatten()).distinctBy { it.videoId }
     }
 
-    /** Stores [link] with its tracks and returns its id. A link that is already saved is not fetched again. */
+    /**
+     * Stores [link] with its tracks and returns its id; a single video joins the Videos or Shorts group and
+     * returns the group's id. A link or video that is already saved is not fetched again.
+     */
     suspend fun add(link: YouTubeLink): Long {
         val sourceId = when (link) {
-            is YouTubeLink.Video -> link.videoId
+            is YouTubeLink.Video -> return addVideo(link)
             is YouTubeLink.Playlist -> link.playlistId
             is YouTubeLink.Mix -> link.playlistId
         }
@@ -247,11 +312,7 @@ class Repository(private val dao: LibraryDao, private val youTube: YouTube) {
                 // A mix keeps only its name and artwork; tracks are fetched live on every play.
                 is YouTubeLink.Mix ->
                     LinkType.MIX to youTube.mix(link.playlistId, link.seedVideoId).copy(tracks = emptyList())
-                is YouTubeLink.Playlist -> LinkType.PLAYLIST to youTube.playlist(link.playlistId)
-                is YouTubeLink.Video -> {
-                    val track = youTube.track(sourceId)
-                    LinkType.VIDEO to Playlist(track.title, track.artworkUrl, listOf(track))
-                }
+                else -> LinkType.PLAYLIST to youTube.playlist(sourceId)
             }
         }
         val now = System.currentTimeMillis()
@@ -265,5 +326,26 @@ class Repository(private val dao: LibraryDao, private val youTube: YouTube) {
             seedVideoId = (link as? YouTubeLink.Mix)?.seedVideoId,
         )
         return dao.insert(entity, playlist.tracks)
+    }
+
+    private suspend fun addVideo(link: YouTubeLink.Video): Long {
+        val (type, sourceId, title) = if (link.short) {
+            Triple(LinkType.SHORTS, SHORTS_SOURCE, "Shorts")
+        } else {
+            Triple(LinkType.VIDEO, VIDEOS_SOURCE, "Videos")
+        }
+        dao.linkId(sourceId)?.let { if (dao.hasTrack(it, link.videoId)) return it }
+        val track = withContext(Dispatchers.IO) { youTube.track(link.videoId) }
+        val now = System.currentTimeMillis()
+        val group = LinkEntity(
+            sourceId = sourceId,
+            type = type,
+            // Shown localized by type; stored only so the row is readable in the DB.
+            title = title,
+            artworkUrl = track.artworkUrl,
+            lastSyncedAt = now,
+            addedAt = now,
+        )
+        return dao.addToGroup(group, track)
     }
 }
