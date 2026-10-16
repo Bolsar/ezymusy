@@ -51,4 +51,20 @@
     <string name="include_in_shuffle">Include in Shuffle all</string>
     <string name="play_mix">Play mix</string>
     <string name="mix_body">A mix never ends. Its tracks load as you listen.</string>
+    <string name="auto_connect">Auto-connect headphones</string>
+    <string name="auto_connect_body">When Ezymusy opens, it turns on Bluetooth, waits for these headphones to connect, then plays Shuffle all.</string>
+    <string name="auto_connect_switch">Connect and shuffle on open</string>
+    <string name="auto_connect_pick">Choose headphones</string>
+    <string name="auto_connect_permission">Ezymusy needs the Nearby devices permission to see your paired headphones.</string>
+    <string name="auto_connect_allow">Allow</string>
+    <string name="auto_connect_app_settings">Open app settings</string>
+    <string name="auto_connect_bt_needed">Turn on Bluetooth to see your paired headphones.</string>
+    <string name="auto_connect_turn_on">Turn on Bluetooth</string>
+    <string name="auto_connect_no_adapter">This device has no Bluetooth.</string>
+    <string name="auto_connect_no_paired">No paired headphones yet. Pair them in Bluetooth settings, then come back.</string>
+    <string name="auto_connect_settings">Open Bluetooth settings</string>
+    <string name="done">Done</string>
+    <string name="auto_connect_waiting">Waiting for %s…</string>
+    <string name="auto_connect_failed">Couldn\'t connect to %s. Turn the headphones on, then reopen Ezymusy.</string>
+    <string name="auto_connect_bt_off">Bluetooth is off, so music didn\'t start.</string>
 </resources>

@@ -9,8 +9,10 @@ import android.util.Log
 import androidx.annotation.OptIn
 import androidx.annotation.StringRes
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.withStarted
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.media3.common.MediaItem
@@ -160,6 +162,32 @@ class PlayerViewModel(
         // so tracks ordered before it would never play.
         val tracks = repository.shuffleAll().shuffled()
         if (tracks.isNotEmpty()) start(tracks.map { it.toMediaItem() }, 0)
+    }
+
+    /** Waits for the player service; true when it is already playing (the app reopened mid-song). */
+    suspend fun isPlaying() = try {
+        controller.await().isPlaying
+    } catch (e: CancellationException) {
+        throw e
+    } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
+        Log.w(TAG, "No player to check", e)
+        false
+    }
+
+    /**
+     * Plays Shuffle all once [ready] says so and the app is on screen, or calls [onFail]. Runs here rather than in
+     * the activity so a rotation mid-wait doesn't drop it; waits for the screen because starting a media
+     * foreground service from the background isn't allowed since Android 12.
+     */
+    fun shuffleAllWhen(ready: suspend () -> Boolean, onFail: () -> Unit) {
+        viewModelScope.launch {
+            if (ready()) {
+                ProcessLifecycleOwner.get().lifecycle.withStarted {}
+                shuffleAll()
+            } else {
+                onFail()
+            }
+        }
     }
 
     /** Runs one queue load at a time: a newer request cancels the older, so a slow fetch never overrides it. */
