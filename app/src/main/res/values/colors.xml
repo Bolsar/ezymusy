@@ -1,4 +1,5 @@
 <resources>
     <color name="ink">#FF0B0B0C</color>
     <color name="lime">#FFC6F432</color>
+    <color name="paper">#FFFAFAF7</color>
 </resources>

@@ -1,0 +1,6 @@
+<resources>
+    <!-- Window background before Compose draws, matches the dark palette's background. -->
+    <style name="Theme.Ezymusy" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/ink</item>
+    </style>
+</resources>
