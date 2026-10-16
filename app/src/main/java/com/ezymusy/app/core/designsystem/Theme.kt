@@ -1,10 +1,13 @@
 package com.ezymusy.app.core.designsystem
 
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.ExperimentalTextApi
@@ -19,56 +22,85 @@ import com.ezymusy.app.R
 
 // Tokens live only in this package. See DESIGN.md. Feature code never uses raw colors or sizes.
 
-private object Palette {
-    val Ink = Color(0xFF0B0B0C)
-    val Surface = Color(0xFF141416)
-    val SurfaceHigh = Color(0xFF1C1C1F)
-    val Line = Color(0xFF2A2A2E)
-    val Text = Color(0xFFEDEDED)
-    val TextMuted = Color(0xFF9A9AA0)
-    val Lime = Color(0xFFC6F432)
-    val Red = Color(0xFFFF6B6B)
-}
-
-private val colors = darkColorScheme(
-    primary = Palette.Lime,
-    onPrimary = Palette.Ink,
-    // Every role is mapped so no Material default (purple) leaks into components.
-    primaryContainer = Palette.SurfaceHigh,
-    onPrimaryContainer = Palette.Lime,
-    secondary = Palette.TextMuted,
-    onSecondary = Palette.Ink,
-    secondaryContainer = Palette.SurfaceHigh,
-    onSecondaryContainer = Palette.Text,
-    tertiary = Palette.Lime,
-    onTertiary = Palette.Ink,
-    tertiaryContainer = Palette.SurfaceHigh,
-    onTertiaryContainer = Palette.Lime,
-    surfaceContainerLowest = Palette.Ink,
-    surfaceContainerLow = Palette.Surface,
-    surfaceContainerHighest = Palette.Line,
-    surfaceBright = Palette.SurfaceHigh,
-    surfaceDim = Palette.Ink,
-    surfaceTint = Palette.Lime,
-    inverseSurface = Palette.Text,
-    inverseOnSurface = Palette.Ink,
-    inversePrimary = Palette.Ink,
-    errorContainer = Palette.SurfaceHigh,
-    onErrorContainer = Palette.Red,
-    scrim = Palette.Ink,
-    background = Palette.Ink,
-    onBackground = Palette.Text,
-    surface = Palette.Ink,
-    onSurface = Palette.Text,
-    surfaceVariant = Palette.SurfaceHigh,
-    onSurfaceVariant = Palette.TextMuted,
-    surfaceContainer = Palette.Surface,
-    surfaceContainerHigh = Palette.SurfaceHigh,
-    outline = Palette.Line,
-    outlineVariant = Palette.Line,
-    error = Palette.Red,
-    onError = Palette.Ink,
+private class Palette(
+    val bg: Color,
+    val surface: Color,
+    val surfaceHigh: Color,
+    val line: Color,
+    val text: Color,
+    val textMuted: Color,
+    val accent: Color,
+    val onAccent: Color,
+    val error: Color,
 )
+
+private val Dark = Palette(
+    bg = Color(0xFF0B0B0C),
+    surface = Color(0xFF141416),
+    surfaceHigh = Color(0xFF1C1C1F),
+    line = Color(0xFF2A2A2E),
+    text = Color(0xFFEDEDED),
+    textMuted = Color(0xFF9A9AA0),
+    accent = Color(0xFFC6F432),
+    onAccent = Color(0xFF0B0B0C),
+    error = Color(0xFFFF6B6B),
+)
+
+// Lime fails contrast on white (≈1.3:1), so light mode uses a deep olive of the same hue for the accent.
+private val Light = Palette(
+    bg = Color(0xFFFAFAF7),
+    surface = Color(0xFFF0F0EC),
+    surfaceHigh = Color(0xFFE6E6E1),
+    line = Color(0xFFD6D6D0),
+    text = Color(0xFF111113),
+    textMuted = Color(0xFF5C5C63),
+    accent = Color(0xFF4A6800),
+    onAccent = Color(0xFFFFFFFF),
+    error = Color(0xFFC62828),
+)
+
+// Every role is mapped so no Material default (purple) leaks into components.
+private fun Palette.scheme(base: ColorScheme) = base.copy(
+    primary = accent,
+    onPrimary = onAccent,
+    primaryContainer = surfaceHigh,
+    onPrimaryContainer = accent,
+    secondary = textMuted,
+    onSecondary = bg,
+    secondaryContainer = surfaceHigh,
+    onSecondaryContainer = text,
+    tertiary = accent,
+    onTertiary = onAccent,
+    tertiaryContainer = surfaceHigh,
+    onTertiaryContainer = accent,
+    surfaceContainerLowest = bg,
+    surfaceContainerLow = surface,
+    surfaceContainerHighest = line,
+    surfaceBright = surfaceHigh,
+    surfaceDim = bg,
+    surfaceTint = accent,
+    inverseSurface = text,
+    inverseOnSurface = bg,
+    inversePrimary = bg,
+    errorContainer = surfaceHigh,
+    onErrorContainer = error,
+    scrim = bg,
+    background = bg,
+    onBackground = text,
+    surface = bg,
+    onSurface = text,
+    surfaceVariant = surfaceHigh,
+    onSurfaceVariant = textMuted,
+    surfaceContainer = surface,
+    surfaceContainerHigh = surfaceHigh,
+    outline = line,
+    outlineVariant = line,
+    error = error,
+    onError = bg,
+)
+
+private val darkColors = Dark.scheme(darkColorScheme())
+private val lightColors = Light.scheme(lightColorScheme())
 
 @OptIn(ExperimentalTextApi::class)
 private fun inter(weight: Int) = Font(
@@ -120,8 +152,13 @@ object Dimens {
     const val DisabledAlpha = 0.38f
 }
 
-/** Dark minimal: the app ships one dark theme on purpose (DESIGN.md). */
+/** Dark minimal, with a matching light theme; follows the system setting (DESIGN.md). */
 @Composable
-fun EzymusyTheme(content: @Composable () -> Unit) {
-    MaterialTheme(colorScheme = colors, typography = typography, shapes = shapes, content = content)
+fun EzymusyTheme(dark: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
+    MaterialTheme(
+        colorScheme = if (dark) darkColors else lightColors,
+        typography = typography,
+        shapes = shapes,
+        content = content,
+    )
 }

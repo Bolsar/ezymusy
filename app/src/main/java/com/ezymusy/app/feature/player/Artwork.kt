@@ -26,7 +26,7 @@ import com.ezymusy.app.core.designsystem.Dimens
 private const val SCRIM_ALPHA = 0.85f
 
 /**
- * The cover, blurred, under a dark scrim; its colours show through faintly. Blur needs Android 12; older
+ * The cover, blurred, under a background-colored scrim; its colours show through faintly. Blur needs Android 12; older
  * versions get the plain background, since a sharp cover behind the text would be noise.
  * DESIGN.md allows this on Now Playing only.
  */
