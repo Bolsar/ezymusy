@@ -1,0 +1,6 @@
+{
+  "enabledPlugins": {
+    "mobile-dev@bolsar": true,
+    "mobile-dev-android@bolsar": true
+  }
+}
