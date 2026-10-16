@@ -71,16 +71,16 @@ private val colors = darkColorScheme(
 )
 
 @OptIn(ExperimentalTextApi::class)
-private fun grotesk(weight: Int) = Font(
-    R.font.space_grotesk,
+private fun inter(weight: Int) = Font(
+    R.font.inter,
     weight = FontWeight(weight),
     variationSettings = FontVariation.Settings(FontVariation.weight(weight)),
 )
 
-private val SpaceGrotesk = FontFamily(grotesk(400), grotesk(500), grotesk(600))
+private val Inter = FontFamily(inter(400), inter(500), inter(600))
 
 private fun style(size: Int, line: Int, weight: Int) = TextStyle(
-    fontFamily = SpaceGrotesk,
+    fontFamily = Inter,
     fontSize = size.sp,
     lineHeight = line.sp,
     fontWeight = FontWeight(weight),
