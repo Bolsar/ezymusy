@@ -22,6 +22,7 @@ import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.SkipPrevious
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconToggleButton
 import androidx.compose.material3.MaterialTheme
@@ -48,6 +49,7 @@ import androidx.media3.common.Player
 import com.ezymusy.app.R
 import com.ezymusy.app.core.designsystem.BackBar
 import com.ezymusy.app.core.designsystem.Dimens
+import com.ezymusy.app.core.designsystem.EqualizerLoader
 import com.ezymusy.app.core.designsystem.EzymusyTheme
 import java.util.concurrent.TimeUnit
 
@@ -104,8 +106,14 @@ fun NowPlayingScreen(
                 Controls(playback, onTogglePlay, onSeek, onNext, onPrevious, onToggleShuffle, onCycleRepeat)
             } else {
                 Spacer(Modifier.weight(1f))
-                // Loads start from Library or Detail, where the mini player shows them.
-                if (playback is Playback.Failed) FailedState(playback, onRetry)
+                when (playback) {
+                    is Playback.Failed -> FailedState(playback, onRetry)
+                    Playback.Loading -> EqualizerLoader(
+                        Modifier.align(Alignment.CenterHorizontally),
+                        size = Dimens.TouchTarget,
+                    )
+                    else -> Unit
+                }
                 Spacer(Modifier.weight(1f))
             }
         }
@@ -143,14 +151,17 @@ fun MiniPlayer(
         ) {
             when (playback) {
                 Playback.Idle -> Unit
-                Playback.Loading -> Text(
-                    stringResource(R.string.loading),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(vertical = Dimens.SpaceM),
-                )
+                Playback.Loading -> {
+                    EqualizerLoader(Modifier.padding(end = Dimens.SpaceM))
+                    Text(
+                        stringResource(R.string.loading),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(vertical = Dimens.SpaceM),
+                    )
+                }
                 is Playback.Failed -> {
                     Text(
                         stringResource(playback.message),
@@ -178,7 +189,7 @@ fun MiniPlayer(
                         )
                     }
                     IconButton(onClick = onTogglePlay, modifier = Modifier.testTag("mini_play_pause")) {
-                        PlayPauseIcon(playback.showPause)
+                        PlayPauseIcon(playback.showPause, playback.buffering)
                     }
                 }
             }
@@ -264,7 +275,7 @@ private fun Controls(
                     .size(Dimens.PlayButton)
                     .testTag("play_pause"),
             ) {
-                PlayPauseIcon(playback.showPause)
+                PlayPauseIcon(playback.showPause, playback.buffering)
             }
             IconButton(onClick = onNext, enabled = playback.hasNext, modifier = Modifier.testTag("next")) {
                 Icon(Icons.Rounded.SkipNext, contentDescription = stringResource(R.string.next))
@@ -290,8 +301,14 @@ private fun RepeatButton(@Player.RepeatMode repeatMode: Int, onCycleRepeat: () -
     }
 }
 
+/** While the stream loads, the loader stands in for the icon; the button still pauses. */
 @Composable
-private fun PlayPauseIcon(showPause: Boolean) {
+private fun PlayPauseIcon(showPause: Boolean, buffering: Boolean) {
+    if (buffering) {
+        // Lime on the filled play button's lime would vanish, so the loader takes the button's content color.
+        EqualizerLoader(color = LocalContentColor.current)
+        return
+    }
     Icon(
         imageVector = if (showPause) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
         contentDescription = stringResource(if (showPause) R.string.pause else R.string.play),
@@ -308,7 +325,16 @@ private fun TimeLabel(ms: Long) {
 }
 
 private val previewTrack =
-    Playback.Ready("dQw4w9WgXcQ", "Never Gonna Give You Up", "Rick Astley", true, 61_000, 213_000, hasNext = true)
+    Playback.Ready(
+        "dQw4w9WgXcQ",
+        "Never Gonna Give You Up",
+        "Rick Astley",
+        showPause = true,
+        buffering = false,
+        positionMs = 61_000,
+        durationMs = 213_000,
+        hasNext = true,
+    )
 
 @Preview
 @Composable

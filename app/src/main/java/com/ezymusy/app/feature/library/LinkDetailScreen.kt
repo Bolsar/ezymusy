@@ -18,6 +18,7 @@ import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -144,6 +145,7 @@ fun LinkDetailScreen(
                         // Removing the last video removes the empty group too.
                         onRemove = { if (rows.size == 1) onDelete() else onRemoveTrack(row.id) }.takeIf { isGroup },
                     )
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outline)
                 }
             }
             player()

@@ -7,11 +7,19 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
@@ -30,6 +38,11 @@ import com.ezymusy.app.feature.player.PlayerViewModel
 // ponytail: three screens on a saveable back stack; Navigation Compose once deep links or many screens arrive.
 // Encoding: 0 = Now Playing, any positive id = that link's detail. Library is the empty stack.
 private const val NOW_PLAYING = 0L
+private const val LIBRARY = -1L
+private const val SLIDE_MS = 300
+
+/** How far the covered screen drifts left under a pushed one: a quarter of the width, like Android's stack. */
+private const val PARALLAX = 4
 
 class MainActivity : ComponentActivity() {
     private val container by lazy { (application as App).container }
@@ -64,12 +77,38 @@ class MainActivity : ComponentActivity() {
         val stack = rememberSaveable(
             saver = listSaver(save = { it.toList() }, restore = { it.toMutableStateList() }),
         ) { mutableStateListOf<Long>() }
+        // Keeps each screen's saved state (like list scroll) while it is covered by the one above it.
+        val saved = rememberSaveableStateHolder()
         val push: (Long) -> Unit = { stack += it }
-        val pop: () -> Unit = { stack.removeLastOrNull() }
+        val pop: () -> Unit = { stack.removeLastOrNull()?.let(saved::removeState) }
         BackHandler(enabled = stack.isNotEmpty(), onBack = pop)
 
         val miniPlayer = @Composable { MiniPlayer(player, onOpen = { push(NOW_PLAYING) }) }
-        when (val top = stack.lastOrNull()) {
+        // Stack motion: a pushed screen slides in over the right edge, a popped one slides back out.
+        AnimatedContent(
+            targetState = stack.size to stack.lastOrNull(),
+            transitionSpec = {
+                if (targetState.first > initialState.first) {
+                    slideInHorizontally(tween(SLIDE_MS)) { it } togetherWith
+                        slideOutHorizontally(tween(SLIDE_MS)) { -it / PARALLAX } + fadeOut(tween(SLIDE_MS))
+                } else {
+                    (slideInHorizontally(tween(SLIDE_MS)) { -it / PARALLAX } + fadeIn(tween(SLIDE_MS)) togetherWith
+                        slideOutHorizontally(tween(SLIDE_MS)) { it }).apply { targetContentZIndex = -1f }
+                }
+            },
+            label = "stack",
+        ) { (_, top) -> saved.SaveableStateProvider(top ?: LIBRARY) { Screen(top, push, pop, miniPlayer, modifier) } }
+    }
+
+    @Composable
+    private fun Screen(
+        top: Long?,
+        push: (Long) -> Unit,
+        pop: () -> Unit,
+        miniPlayer: @Composable () -> Unit,
+        modifier: Modifier = Modifier,
+    ) {
+        when (top) {
             null -> LibraryRoute(
                 library,
                 onOpenLink = push,

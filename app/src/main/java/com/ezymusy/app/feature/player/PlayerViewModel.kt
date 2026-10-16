@@ -59,6 +59,8 @@ sealed interface Playback {
         val artist: String,
         /** True while playback is playing or about to (buffering): the button offers Pause. */
         val showPause: Boolean,
+        /** The current track's stream is loading; shows the loader in place of the play button. */
+        val buffering: Boolean,
         val positionMs: Long,
         val durationMs: Long,
         val hasNext: Boolean,
@@ -262,6 +264,7 @@ class PlayerViewModel(
                 title = player.mediaMetadata.title?.toString().orEmpty(),
                 artist = player.mediaMetadata.artist?.toString().orEmpty(),
                 showPause = !Util.shouldShowPlayButton(player),
+                buffering = player.playbackState == Player.STATE_BUFFERING,
                 positionMs = player.currentPosition,
                 durationMs = player.duration.coerceAtLeast(0),
                 hasNext = player.hasNextMediaItem(),
